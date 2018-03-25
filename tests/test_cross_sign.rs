@@ -4,7 +4,7 @@ extern crate openssl;
 use std::io::Cursor;
 use openssl::x509::{X509, X509VerifyResult};
 
-use certificate_carver::{Carver, CertificateFingerprint, LogInfo};
+use certificate_carver::{Carver, CertificateBytes, LogInfo};
 
 #[test]
 fn test_fixture_bespoke_certs() {
@@ -14,22 +14,25 @@ fn test_fixture_bespoke_certs() {
     assert!(cert4.issued(&cert3) == X509VerifyResult::OK);
 }
 
+fn pem_to_der(pem: &[u8]) -> Vec<u8> {
+    X509::from_pem(pem).unwrap().to_der().unwrap()
+}
+
 #[test]
 fn test_cross_signatures() {
     let mut carver = Carver::new();
-    let root_fp = CertificateFingerprint([0x34, 0x47, 0x5A, 0x72, 0x1C, 0xF4, 0x8D, 0x2F,
-                                          0x90, 0x79, 0x31, 0x6E, 0x7E, 0x32, 0xC4, 0xBE,
-                                          0x83, 0x35, 0x8D, 0xD7, 0xD4, 0x42, 0xD9, 0x31,
-                                          0x12, 0x6D, 0x02, 0x16, 0x26, 0xC7, 0x12, 0x3D]);
-    let cert4_fp = CertificateFingerprint([0x8B, 0x6A, 0x74, 0x55, 0x60, 0x59, 0x93, 0x9E,
-                                           0x85, 0xEA, 0x2A, 0x44, 0x6D, 0xCE, 0x16, 0x87,
-                                           0x14, 0x79, 0xD4, 0xBA, 0xAF, 0x0F, 0xE1, 0xDE,
-                                           0x0C, 0x70, 0xD9, 0xED, 0x28, 0xC6, 0x4C, 0x93]);
-    let mut root = Cursor::new(include_bytes!("files/bespoke/rootca.crt").to_vec());
-    let mut cert1 = Cursor::new(include_bytes!("files/bespoke/intermediate_a_signed_by_rootca.crt").to_vec());
-    let mut cert2 = Cursor::new(include_bytes!("files/bespoke/intermediate_b_signed_by_rootca.crt").to_vec());
-    let mut cert3 = Cursor::new(include_bytes!("files/bespoke/intermediate_a/intermediate_b_signed_by_intermediate_a.crt").to_vec());
-    let mut cert4 = Cursor::new(include_bytes!("files/bespoke/intermediate_b/intermediate_a_signed_by_intermediate_b.crt").to_vec());
+    let root_pem = include_bytes!("files/bespoke/rootca.crt");
+    let cert1_pem = include_bytes!("files/bespoke/intermediate_a_signed_by_rootca.crt");
+    let cert2_pem = include_bytes!("files/bespoke/intermediate_b_signed_by_rootca.crt");
+    let cert3_pem = include_bytes!("files/bespoke/intermediate_a/intermediate_b_signed_by_intermediate_a.crt");
+    let cert4_pem = include_bytes!("files/bespoke/intermediate_b/intermediate_a_signed_by_intermediate_b.crt");
+    let root_fp = CertificateBytes(pem_to_der(root_pem)).fingerprint();
+    let cert4_fp = CertificateBytes(pem_to_der(cert4_pem)).fingerprint();
+    let mut root = Cursor::new(root_pem.to_vec());
+    let mut cert1 = Cursor::new(cert1_pem.to_vec());
+    let mut cert2 = Cursor::new(cert2_pem.to_vec());
+    let mut cert3 = Cursor::new(cert3_pem.to_vec());
+    let mut cert4 = Cursor::new(cert4_pem.to_vec());
     carver.carve_stream(&mut root, "root");
     carver.carve_stream(&mut cert1, "cert1");
     carver.carve_stream(&mut cert2, "cert2");
