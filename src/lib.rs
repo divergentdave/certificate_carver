@@ -102,6 +102,10 @@ impl AsRef<[u8]> for CertificateBytes {
     }
 }
 
+pub struct CertificateChain (
+    pub Vec<CertificateBytes>
+);
+
 // make a class to hold certificate infos, and counts of certs, unchainable, submitted, etc.
 pub struct CertificateInfo {
     pub paths: Vec<String>,
@@ -146,10 +150,10 @@ impl LogInfo {
         vec
     }
 
-    pub fn submit_chain(&self, chain: &Vec<CertificateBytes>) -> Result<AddChainResponse, reqwest::Error> {
+    pub fn submit_chain(&self, chain: &CertificateChain) -> Result<AddChainResponse, reqwest::Error> {
         // TODO: which order? should have leaf first, i think we're okay
         let url = self.url.join("ct/v1/add-chain").unwrap();
-        let encoded = chain.iter().map(|c| pem_base64_encode(c.as_ref())).collect();
+        let encoded = chain.0.iter().map(|c| pem_base64_encode(c.as_ref())).collect();
         let request_body = AddChainRequest{
             chain: encoded,
         };

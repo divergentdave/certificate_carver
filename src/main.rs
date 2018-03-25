@@ -2,7 +2,7 @@ extern crate certificate_carver;
 
 extern crate regex;
 
-use certificate_carver::{Carver, LogInfo, CertificateFingerprint, check_crtsh};
+use certificate_carver::{Carver, LogInfo, CertificateChain, CertificateFingerprint, check_crtsh};
 
 const LOG_URLS: [&str; 1] = ["https://ct.googleapis.com/pilot/"];
 
@@ -60,7 +60,7 @@ fn main() {
             let chains = carver.build_chains(fp, &issuer_lookup, &log.trust_roots);
             for chain_fps in chains.iter() {
                 let chain_ders = chain_fps.iter().map(|fp| carver.map.get(fp).unwrap().der.clone()).collect();
-                log.submit_chain(&chain_ders).unwrap();
+                log.submit_chain(&CertificateChain(chain_ders)).unwrap();
                 println!("submitted");
             }
         }
