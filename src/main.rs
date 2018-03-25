@@ -13,7 +13,8 @@ fn main() {
     //carver.scan_directory("/home/david/Rockwell-Automation-firmware");
     //carver.scan_directory("/etc/ssl/certs");
     //carver.scan_directory("/home/david/certificate-carver/javacerts");
-    carver.scan_directory("/home/david/certificate-carver/src/tests");
+    carver.scan_directory("/home/david/certificate-carver/tests/files/davidsherenowitsa.party");
+    carver.scan_directory("/home/david/certificate-carver/tests/files/bespoke");
     //carver.scan_directory("/home/david/Downloads");
 
     if false {
@@ -34,7 +35,6 @@ fn main() {
 
     let issuer_lookup = carver.build_issuer_lookup();
 
-    /*
     for log in logs.iter() {
         for (fp, info) in carver.map.iter() {
             if let Ok(_) = log.root_fps_sorted.binary_search(fp) {
@@ -44,9 +44,8 @@ fn main() {
             println!("Built {} chains", chains.len());
         }
     }
-    */
 
-    if false {
+    if true {
         return;
     }
 

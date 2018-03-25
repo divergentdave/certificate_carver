@@ -14,7 +14,7 @@ extern crate lazy_static;
 extern crate serde_derive;
 
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::str;
@@ -61,7 +61,7 @@ pub struct AddChainResponse {
 // should make separate types for fingerprints and cert der instead of using Vec<u8>
 #[derive(Hash, PartialOrd, Ord, PartialEq, Eq, Clone, Copy)]
 pub struct CertificateFingerprint (
-    [u8; 32]
+    pub [u8; 32]
 );
 
 impl AsRef<[u8]> for CertificateFingerprint {
@@ -72,13 +72,19 @@ impl AsRef<[u8]> for CertificateFingerprint {
 
 impl Display for CertificateFingerprint {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
-        hex::encode(self).fmt(f)
+        <String as Display>::fmt(&hex::encode(self), f)
+    }
+}
+
+impl Debug for CertificateFingerprint {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "CertificateFingerprint({})", self)
     }
 }
 
 #[derive(Clone)]
 pub struct CertificateBytes (
-    Vec<u8>
+    pub Vec<u8>
 );
 
 impl CertificateBytes {
@@ -195,7 +201,6 @@ impl Carver {
                 let length_bytes = &caps["length"];
                 let length = ((length_bytes[0] as usize) << 8) | length_bytes[1] as usize;
                 let start = m.start();
-                //println!("DER match, {} to {} out of {}", start, start + length + 4, data.len());
                 self.add_cert(&CertificateBytes(data[start..start + length + 4].to_vec()), path);
             }
             if let Some(m) = caps.name("PEM") {
@@ -287,7 +292,7 @@ impl Carver {
                         Ok(_) => {
                             partial_chains.push(new);
                             break;
-                            // only want one chain even if we have multiple equivalent roots
+                            // only want this chain once, even if we have multiple equivalent roots
                         },
                         Err(_) => {
                             let mut result = recurse(issuer_fp, new, issuer_lookup, root_fps_sorted);
