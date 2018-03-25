@@ -254,6 +254,7 @@ impl Carver {
     }
 
     pub fn build_issuer_lookup(&self) -> HashMap<CertificateFingerprint, Vec<CertificateFingerprint>> {
+        // TODO: could use a hashmap over name der bytes to avoid calling issued() O(n^2) times
         let mut lookup: HashMap<CertificateFingerprint, Vec<CertificateFingerprint>> = HashMap::new();
         for (issuer_fp, issuer_info) in self.map.iter() {
             let issuer = &issuer_info.cert;

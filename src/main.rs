@@ -10,11 +10,9 @@ fn main() {
     println!("Hello, world!");
 
     let mut carver = Carver::new();
-    //carver.scan_directory("/home/david/Rockwell-Automation-firmware");
     //carver.scan_directory("/etc/ssl/certs");
-    //carver.scan_directory("/home/david/certificate-carver/javacerts");
+    //carver.scan_directory("/home/david/certificate_carver/javacerts");
     carver.scan_directory("/home/david/certificate-carver/tests/files/davidsherenowitsa.party");
-    carver.scan_directory("/home/david/certificate-carver/tests/files/bespoke");
     //carver.scan_directory("/home/david/Downloads");
 
     if false {
@@ -35,16 +33,6 @@ fn main() {
 
     let issuer_lookup = carver.build_issuer_lookup();
 
-    for log in logs.iter() {
-        for (fp, info) in carver.map.iter() {
-            if let Ok(_) = log.root_fps_sorted.binary_search(fp) {
-                continue;
-            }
-            let chains = carver.build_chains(fp, &issuer_lookup, &log.root_fps_sorted);
-            println!("Built {} chains", chains.len());
-        }
-    }
-
     if true {
         return;
     }
@@ -60,7 +48,6 @@ fn main() {
             total_found += 1;
         } else {
             total_not_found += 1;
-            //new_fps.push(fp.clone());
         }
         new_fps.push(fp.clone());
     }
@@ -80,7 +67,3 @@ fn main() {
         }
     }
 }
-
-// could use a hashmap over name der bytes to avoid calling issued() O(n^2) times
-
-// TODO: test that chain building works in the presence of mutually cross-signing certs
