@@ -303,8 +303,14 @@ impl Carver {
         lookup
     }
 
-    pub fn build_chains(&self, leaf_fp: &CertificateFingerprint, issuer_lookup: &HashMap<CertificateFingerprint, Vec<CertificateFingerprint>>, trust_roots: &TrustRoots) -> Vec<Vec<CertificateFingerprint>> {
-        fn recurse<'a, 'b>(fp: &'a CertificateFingerprint, history: Vec<CertificateFingerprint>, issuer_lookup: &'a HashMap<CertificateFingerprint, Vec<CertificateFingerprint>>, trust_roots: &TrustRoots) -> Vec<Vec<CertificateFingerprint>> {
+    pub fn build_chains(&self,
+                        leaf_fp: &CertificateFingerprint,
+                        issuer_lookup: &HashMap<CertificateFingerprint, Vec<CertificateFingerprint>>,
+                        trust_roots: &TrustRoots) -> Vec<CertificateChain> {
+        fn recurse<'a, 'b>(fp: &'a CertificateFingerprint,
+                           history: Vec<CertificateFingerprint>,
+                           issuer_lookup: &'a HashMap<CertificateFingerprint, Vec<CertificateFingerprint>>,
+                           trust_roots: &TrustRoots) -> Vec<Vec<CertificateFingerprint>> {
             if let Some(issuer_fps) = issuer_lookup.get(fp) {
                 let mut partial_chains: Vec<Vec<CertificateFingerprint>> = Vec::new();
                 for issuer_fp in issuer_fps.iter() {
@@ -337,7 +343,12 @@ impl Carver {
                 Vec::new()
             }
         }
-        recurse(leaf_fp, Vec::new(), issuer_lookup, trust_roots)
+        let fp_chains = recurse(leaf_fp, Vec::new(), issuer_lookup, trust_roots);
+        fp_chains.iter().map(
+            |fp_chain| CertificateChain(fp_chain.iter().map(
+                |fp| self.map.get(fp).unwrap().der.clone()
+            ).collect())
+        ).collect()
     }
 }
 
