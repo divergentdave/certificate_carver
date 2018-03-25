@@ -25,9 +25,8 @@ fn main() {
         log.roots = log.fetch_roots();
         for root_der in &log.roots[..] {
             carver.add_cert(root_der, "pilot roots");
-            log.root_fps_sorted.push(root_der.fingerprint());
         }
-        log.root_fps_sorted.sort();
+        log.trust_roots.add_roots(&log.roots);
         logs.push(log);
     }
 
@@ -55,10 +54,10 @@ fn main() {
 
     for fp in new_fps.iter() {
         for log in logs.iter() {
-            if let Ok(_) = log.root_fps_sorted.binary_search(fp) {
+            if let Ok(_) = log.trust_roots.test_fingerprint(fp) {
                 continue;
             }
-            let chains = carver.build_chains(fp, &issuer_lookup, &log.root_fps_sorted);
+            let chains = carver.build_chains(fp, &issuer_lookup, &log.trust_roots);
             for chain_fps in chains.iter() {
                 let chain_ders = chain_fps.iter().map(|fp| carver.map.get(fp).unwrap().der.clone()).collect();
                 log.submit_chain(&chain_ders).unwrap();

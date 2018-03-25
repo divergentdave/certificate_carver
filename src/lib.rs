@@ -122,7 +122,7 @@ impl CertificateInfo {
 pub struct LogInfo {
     url: Url,
     pub roots: Vec<CertificateBytes>,
-    pub root_fps_sorted: Vec<CertificateFingerprint>,
+    pub trust_roots: TrustRoots,
 }
 
 impl LogInfo {
@@ -130,7 +130,7 @@ impl LogInfo {
         LogInfo {
             url: Url::parse(url).unwrap(),
             roots: Vec::new(),
-            root_fps_sorted: Vec::new(),
+            trust_roots: TrustRoots::new(),
         }
     }
 
@@ -159,6 +159,33 @@ impl LogInfo {
             .send()?;
         let response_body: AddChainResponse = response.json().unwrap();
         Ok((response_body))
+    }
+}
+
+pub struct TrustRoots {
+    root_fps_sorted: Vec<CertificateFingerprint>,
+}
+
+impl TrustRoots {
+    pub fn new() -> TrustRoots {
+        TrustRoots {
+            root_fps_sorted: Vec::new(),
+        }
+    }
+
+    pub fn add_roots(&mut self, roots: &[CertificateBytes]) {
+        for root in roots.iter() {
+            let fp = root.fingerprint();
+            self.root_fps_sorted.push(fp);
+        }
+        self.root_fps_sorted.sort();
+    }
+
+    pub fn test_fingerprint(&self, fp: &CertificateFingerprint) -> Result<(), ()> {
+        match self.root_fps_sorted.binary_search(fp) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(()),
+        }
     }
 }
 
@@ -272,8 +299,8 @@ impl Carver {
         lookup
     }
 
-    pub fn build_chains(&self, leaf_fp: &CertificateFingerprint, issuer_lookup: &HashMap<CertificateFingerprint, Vec<CertificateFingerprint>>, root_fps_sorted: &Vec<CertificateFingerprint>) -> Vec<Vec<CertificateFingerprint>> {
-        fn recurse<'a, 'b>(fp: &'a CertificateFingerprint, history: Vec<CertificateFingerprint>, issuer_lookup: &'a HashMap<CertificateFingerprint, Vec<CertificateFingerprint>>, root_fps_sorted: &'b Vec<CertificateFingerprint>) -> Vec<Vec<CertificateFingerprint>> {
+    pub fn build_chains(&self, leaf_fp: &CertificateFingerprint, issuer_lookup: &HashMap<CertificateFingerprint, Vec<CertificateFingerprint>>, trust_roots: &TrustRoots) -> Vec<Vec<CertificateFingerprint>> {
+        fn recurse<'a, 'b>(fp: &'a CertificateFingerprint, history: Vec<CertificateFingerprint>, issuer_lookup: &'a HashMap<CertificateFingerprint, Vec<CertificateFingerprint>>, trust_roots: &TrustRoots) -> Vec<Vec<CertificateFingerprint>> {
             if let Some(issuer_fps) = issuer_lookup.get(fp) {
                 let mut partial_chains: Vec<Vec<CertificateFingerprint>> = Vec::new();
                 for issuer_fp in issuer_fps.iter() {
@@ -289,14 +316,14 @@ impl Carver {
                     }
                     let mut new = history.clone();
                     new.push(fp.clone());
-                    match root_fps_sorted.binary_search(&issuer_fp) {
+                    match trust_roots.test_fingerprint(&issuer_fp) {
                         Ok(_) => {
                             partial_chains.push(new);
                             break;
                             // only want this chain once, even if we have multiple equivalent roots
                         },
                         Err(_) => {
-                            let mut result = recurse(issuer_fp, new, issuer_lookup, root_fps_sorted);
+                            let mut result = recurse(issuer_fp, new, issuer_lookup, trust_roots);
                             partial_chains.append(&mut result);
                         },
                     }
@@ -306,7 +333,7 @@ impl Carver {
                 Vec::new()
             }
         }
-        recurse(leaf_fp, Vec::new(), issuer_lookup, root_fps_sorted)
+        recurse(leaf_fp, Vec::new(), issuer_lookup, trust_roots)
     }
 }
 

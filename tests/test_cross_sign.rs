@@ -26,7 +26,6 @@ fn test_cross_signatures() {
     let cert2_pem = include_bytes!("files/bespoke/intermediate_b_signed_by_rootca.crt");
     let cert3_pem = include_bytes!("files/bespoke/intermediate_a/intermediate_b_signed_by_intermediate_a.crt");
     let cert4_pem = include_bytes!("files/bespoke/intermediate_b/intermediate_a_signed_by_intermediate_b.crt");
-    let root_fp = CertificateBytes(pem_to_der(root_pem)).fingerprint();
     let cert4_fp = CertificateBytes(pem_to_der(cert4_pem)).fingerprint();
     let mut root = Cursor::new(root_pem.to_vec());
     let mut cert1 = Cursor::new(cert1_pem.to_vec());
@@ -42,8 +41,8 @@ fn test_cross_signatures() {
     let issuer_lookup = carver.build_issuer_lookup();
 
     let mut log = LogInfo::new("http://127.0.0.0/");
-    log.root_fps_sorted.push(root_fp);
+    log.trust_roots.add_roots(&[CertificateBytes(pem_to_der(root_pem))]);
 
-    let chains = carver.build_chains(&cert4_fp, &issuer_lookup, &log.root_fps_sorted);
+    let chains = carver.build_chains(&cert4_fp, &issuer_lookup, &log.trust_roots);
     assert!(chains.len() == 2);
 }

@@ -10,7 +10,7 @@ fn test_load_pem_chain() {
     let mut stream = Cursor::new(&bytes[..]);
     let mut carver = Carver::new();
     carver.carve_stream(&mut stream, "fullchain.pem");
-    // TODO: check data structures, fingerprints
+    assert!(carver.map.len() == 2);
 }
 
 #[test]
@@ -19,5 +19,5 @@ fn test_load_zip_chain() {
     let mut stream = Cursor::new(&bytes[..]);
     let mut carver = Carver::new();
     carver.carve_file(&mut stream, "fullchain.zip");
-    // TODO: check data structures, fingerprints
+    assert!(carver.map.len() == 2);
 }
