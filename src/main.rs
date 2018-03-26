@@ -8,13 +8,17 @@ use std::io::stdout;
 
 use certificate_carver::{Carver, CertificateFingerprint, LogInfo, TrustRoots, check_crtsh, format_subject_issuer};
 
-const LOG_URLS: [&str; 6] = [
+const LOG_URLS: [&str; 10] = [
     "https://ct.googleapis.com/pilot/",
     "https://ct.googleapis.com/daedalus/",
     "https://ct.googleapis.com/icarus/",
     "https://ct1.digicert-ct.com/log/",
     "https://ct.ws.symantec.com/",
     "https://vega.ws.symantec.com/",
+    "https://dodo.ct.comodo.com/",
+    "https://sabre.ct.comodo.com/",
+    "https://mammoth.ct.comodo.com/",
+    "https://plausible.ct.nordu.net/",
 ];
 
 fn main() {
