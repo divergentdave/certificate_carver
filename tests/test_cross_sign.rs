@@ -32,11 +32,11 @@ fn test_cross_signatures() {
     let mut cert2 = Cursor::new(cert2_pem.to_vec());
     let mut cert3 = Cursor::new(cert3_pem.to_vec());
     let mut cert4 = Cursor::new(cert4_pem.to_vec());
-    carver.carve_stream(&mut root, "root");
-    carver.carve_stream(&mut cert1, "cert1");
-    carver.carve_stream(&mut cert2, "cert2");
-    carver.carve_stream(&mut cert3, "cert3");
-    carver.carve_stream(&mut cert4, "cert4");
+    carver.scan_file(&mut root, "root");
+    carver.scan_file(&mut cert1, "cert1");
+    carver.scan_file(&mut cert2, "cert2");
+    carver.scan_file(&mut cert3, "cert3");
+    carver.scan_file(&mut cert4, "cert4");
     assert!(carver.map.len() == 5);
     let issuer_lookup = carver.build_issuer_lookup();
 

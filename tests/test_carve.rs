@@ -9,7 +9,7 @@ fn test_load_pem_chain() {
     let bytes = include_bytes!("files/davidsherenowitsa.party/fullchain.pem");
     let mut stream = Cursor::new(&bytes[..]);
     let mut carver = Carver::new();
-    carver.carve_stream(&mut stream, "fullchain.pem");
+    carver.scan_file(&mut stream, "fullchain.pem");
     assert!(carver.map.len() == 2);
 }
 
@@ -18,6 +18,6 @@ fn test_load_zip_chain() {
     let bytes = include_bytes!("files/davidsherenowitsa.party/fullchain.zip");
     let mut stream = Cursor::new(&bytes[..]);
     let mut carver = Carver::new();
-    carver.carve_file(&mut stream, "fullchain.zip");
+    carver.scan_file(&mut stream, "fullchain.zip");
     assert!(carver.map.len() == 2);
 }

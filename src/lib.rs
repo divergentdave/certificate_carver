@@ -214,7 +214,7 @@ impl Carver {
         }
     }
 
-    pub fn carve_stream<R: Read>(&mut self, stream: &mut R, path: &str) {
+    pub fn carve_stream<R: Read>(&self, stream: &mut R) -> Vec<CertificateBytes> {
         lazy_static! {
             static ref HEADER_RE: Regex = Regex::new(
                 r"(?P<DER>(?-u:\x30\x82(?P<length>..)\x30\x82..(?:\xa0\x03\x02\x01.)?\x02))|(?P<PEM>-----BEGIN CERTIFICATE-----)"
@@ -222,18 +222,20 @@ impl Carver {
             static ref PEM_END_RE: Regex = Regex::new("-----END CERTIFICATE-----").unwrap();
         }
 
+        let mut results = Vec::new();
+
         // TODO: stream through a buffer and keep searching that
         let mut data = Vec::new();
         match stream.read_to_end(&mut data) {
             Ok(_) => (),
-            Err(_) => return
+            Err(_) => return results,
         }
         for caps in HEADER_RE.captures_iter(&data) {
             if let Some(m) = caps.name("DER") {
                 let length_bytes = &caps["length"];
                 let length = ((length_bytes[0] as usize) << 8) | length_bytes[1] as usize;
                 let start = m.start();
-                self.add_cert(&CertificateBytes(data[start..start + length + 4].to_vec()), path);
+                results.push(CertificateBytes(data[start..start + length + 4].to_vec()));
             }
             if let Some(m) = caps.name("PEM") {
                 let start = m.start() + 27;
@@ -241,46 +243,53 @@ impl Carver {
                     let end = start + m2.start();
                     let encoded = &data[start..end];
                     if let Ok(bytes) = pem_base64_decode(&encoded) {
-                        self.add_cert(&CertificateBytes(bytes), path);
+                        results.push(CertificateBytes(bytes));
                     }
                 }
             }
         }
+        results
     }
 
-    pub fn carve_file<RS: Read + Seek>(&mut self, mut file: &mut RS, path: &str) {
+    pub fn carve_file<RS: Read + Seek>(&self, mut file: &mut RS) -> Vec<CertificateBytes> {
+        let mut results = Vec::new();
         let mut magic: [u8; 4] = [0; 4];
         match file.read(&mut magic) {
             Ok(_) => (),
-            Err(_) => return
+            Err(_) => return results
         }
         match file.seek(SeekFrom::Start(0)) {
             Ok(_) => (),
-            Err(_) => return
+            Err(_) => return results
         }
         if magic == ZIP_MAGIC {
             if let Ok(mut archive) = ZipArchive::new(&mut file) {
                 for i in 0..archive.len() {
                     if let Ok(mut entry) = archive.by_index(i) {
-                        let path = format!("{}:{}", path, entry.name());
-                        self.carve_stream(&mut entry, &path);
+                        results.append(&mut self.carve_stream(&mut entry));
                     }
                 }
             }
             match file.seek(SeekFrom::Start(0)) {
                 Ok(_) => (),
-                Err(_) => return
+                Err(_) => return results
             }
         }
-        self.carve_stream(&mut file, path);
+        results.append(&mut self.carve_stream(&mut file));
+        results
+    }
+
+    pub fn scan_file<RS: Read + Seek>(&mut self, mut file: &mut RS, path: &str) {
+        for certbytes in self.carve_file(&mut file).iter() {
+            self.add_cert(&certbytes, path);
+        }
     }
 
     pub fn scan_directory(&mut self, root: &str) {
-        // TODO: does this work when passed a path to a file instead?
-        // TODO: parallelize
+        // TODO: parallelize? WalkDir doesn't have parallel iterator support yet
         for entry in WalkDir::new(root).into_iter().filter_map(|e| e.ok()) {
             if let Ok(mut file) = File::open(entry.path()) {
-                self.carve_file(&mut file, entry.path().to_str().unwrap_or("TODO"));
+                self.scan_file(&mut file, entry.path().to_str().unwrap_or("(unprintable_path)"));
             }
         }
     }

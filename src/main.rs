@@ -66,6 +66,7 @@ fn main() {
             for chain in chains.iter() {
                 log.submit_chain(&chain).unwrap();
                 println!("submitted");
+                break;
             }
         }
     }
