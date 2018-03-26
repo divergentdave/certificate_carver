@@ -163,8 +163,12 @@ impl LogInfo {
         let mut response = client.post(url)
             .json(&request_body)
             .send()?;
-        let response_body: AddChainResponse = response.json().unwrap();
+        let response_body: AddChainResponse = response.json()?;
         Ok((response_body))
+    }
+
+    pub fn get_url(&self) -> &Url {
+            &self.url
     }
 }
 

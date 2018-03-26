@@ -1,6 +1,7 @@
 extern crate certificate_carver;
 
 extern crate regex;
+extern crate reqwest;
 
 use std::env::args;
 use std::io::stdout;
@@ -39,6 +40,7 @@ fn main() {
 
     let mut total_found = 0;
     let mut total_not_found = 0;
+    let mut count_no_chain = 0;
     let mut new_fps: Vec<CertificateFingerprint> = Vec::new();
     for (fp, info) in carver.map.iter() {
         if let Ok(_) = all_roots.test_fingerprint(fp) {
@@ -48,19 +50,29 @@ fn main() {
         let found = check_crtsh(fp).unwrap();
         format_subject_issuer(&info.cert, &mut stdout()).unwrap();
         println!("");
-        println!("{}, crtsh seen = {}, {} paths", fp, found, info.paths.len());
+        println!("{}, crtsh seen = {}, {} file paths", fp, found, info.paths.len());
         println!("");
-        if found {
-            total_found += 1;
+        if carver.build_chains(fp, &issuer_lookup, &all_roots).len() > 0 {
+            if found {
+                total_found += 1;
+            } else {
+                total_not_found += 1;
+                // new_fps.push(fp.clone());
+            }
         } else {
-            total_not_found += 1;
-            new_fps.push(fp.clone());
+            count_no_chain += 1;
         }
+        new_fps.push(fp.clone());
     }
     let total = total_found + total_not_found;
-    println!("{}/{} in crt.sh already, {}/{} not yet in crt.sh", total_found, total, total_not_found, total);
+    println!("{}/{} in crt.sh already, {}/{} not yet in crt.sh ({} did not chain to roots)",
+             total_found, total, total_not_found, total, count_no_chain);
+    println!("");
 
     for fp in new_fps.iter() {
+        let mut any_chain = false;
+        let mut any_submission_success = false;
+        let mut last_submission_error: Option<reqwest::Error> = None;
         for log in logs.iter() {
             if let Ok(_) = log.trust_roots.test_fingerprint(fp) {
                 // skip root CAs
@@ -68,13 +80,26 @@ fn main() {
             }
             let chains = carver.build_chains(fp, &issuer_lookup, &log.trust_roots);
             for chain in chains.iter() {
-                log.submit_chain(&chain).unwrap();
-                print!("submitted {}, ", fp);
-                format_subject_issuer(&carver.map.get(fp).unwrap().cert, &mut stdout()).unwrap();
-                println!("");
-                // only submit one chain
-                break;
+                any_chain = true;
+                match log.submit_chain(&chain) {
+                    Ok(_) => {
+                        any_submission_success = true;
+
+                        print!("submitted to {}: {}, ", log.get_url(), fp);
+                        format_subject_issuer(&carver.map.get(fp).unwrap().cert, &mut stdout()).unwrap();
+                        println!("");
+                        println!("");
+                        // only submit one chain
+                        break;
+                    },
+                    Err(e) => {
+                        last_submission_error = Some(e);
+                    },
+                }
             }
+        }
+        if any_chain && !any_submission_success {
+            panic!(last_submission_error.unwrap());
         }
     }
 }
