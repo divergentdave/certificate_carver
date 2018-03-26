@@ -64,12 +64,11 @@ fn main() {
                 total_found += 1;
             } else {
                 total_not_found += 1;
-                // new_fps.push(fp.clone());
+                 new_fps.push(fp.clone());
             }
         } else {
             count_no_chain += 1;
         }
-        new_fps.push(fp.clone());
     }
     let total = total_found + total_not_found;
     println!("{}/{} in crt.sh already, {}/{} not yet in crt.sh ({} did not chain to roots)",
