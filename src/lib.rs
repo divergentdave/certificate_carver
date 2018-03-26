@@ -243,7 +243,10 @@ impl Carver {
                 let length_bytes = &caps["length"];
                 let length = ((length_bytes[0] as usize) << 8) | length_bytes[1] as usize;
                 let start = m.start();
-                results.push(CertificateBytes(data[start..start + length + 4].to_vec()));
+                let end = start + length + 4;
+                if end <= data.len() {
+                    results.push(CertificateBytes(data[start..end].to_vec()));
+                }
             }
             if let Some(m) = caps.name("PEM") {
                 let start = m.start() + 27;
