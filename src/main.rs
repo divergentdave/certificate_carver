@@ -8,7 +8,14 @@ use std::io::stdout;
 
 use certificate_carver::{Carver, CertificateFingerprint, LogInfo, TrustRoots, check_crtsh, format_subject_issuer};
 
-const LOG_URLS: [&str; 1] = ["https://ct.googleapis.com/pilot/"];
+const LOG_URLS: [&str; 6] = [
+    "https://ct.googleapis.com/pilot/",
+    "https://ct.googleapis.com/daedalus/",
+    "https://ct.googleapis.com/icarus/",
+    "https://ct1.digicert-ct.com/log/",
+    "https://ct.ws.symantec.com/",
+    "https://vega.ws.symantec.com/",
+];
 
 fn main() {
     let mut carver = Carver::new();
