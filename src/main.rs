@@ -58,6 +58,9 @@ fn main() {
         format_subject_issuer(&info.cert, &mut stdout()).unwrap();
         println!("");
         println!("{}, crtsh seen = {}, {} file paths", fp, found, info.paths.len());
+        for path in info.paths.iter() {
+            println!("{}", path);
+        }
         println!("");
         if carver.build_chains(fp, &issuer_lookup, &all_roots).len() > 0 {
             if found {
