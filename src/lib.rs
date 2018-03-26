@@ -15,8 +15,9 @@ extern crate serde_derive;
 
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
-use std::fs::File;
+use std::fs::{File, read_dir};
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::Path;
 use std::str;
 use openssl::nid::Nid;
 use openssl::x509::{X509, X509NameRef, X509VerifyResult};
@@ -286,6 +287,7 @@ impl Carver {
     }
 
     pub fn scan_directory(&mut self, root: &str) {
+        read_dir(Path::new(root)).unwrap();
         // TODO: parallelize? WalkDir doesn't have parallel iterator support yet
         for entry in WalkDir::new(root).into_iter().filter_map(|e| e.ok()) {
             if let Ok(mut file) = File::open(entry.path()) {
