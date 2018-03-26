@@ -152,7 +152,7 @@ impl LogInfo {
         vec
     }
 
-    pub fn submit_chain(&self, chain: &CertificateChain) -> Result<AddChainResponse, reqwest::Error> {
+    pub fn submit_chain(&self, chain: &CertificateChain) -> Result<Result<AddChainResponse, reqwest::StatusCode>, reqwest::Error> {
         // TODO: which order? should have leaf first, i think we're okay
         let url = self.url.join("ct/v1/add-chain").unwrap();
         let encoded = chain.0.iter().map(|c| pem_base64_encode(c.as_ref())).collect();
@@ -163,8 +163,11 @@ impl LogInfo {
         let mut response = client.post(url)
             .json(&request_body)
             .send()?;
+        if !response.status().is_success() {
+            return Ok(Err(response.status()));
+        }
         let response_body: AddChainResponse = response.json()?;
-        Ok((response_body))
+        Ok(Ok(response_body))
     }
 
     pub fn get_url(&self) -> &Url {
