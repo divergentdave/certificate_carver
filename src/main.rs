@@ -2,7 +2,9 @@ extern crate certificate_carver;
 
 extern crate regex;
 
-use certificate_carver::{Carver, LogInfo, CertificateFingerprint, check_crtsh};
+use std::io::stdout;
+
+use certificate_carver::{Carver, LogInfo, CertificateFingerprint, check_crtsh, format_subject_issuer};
 
 const LOG_URLS: [&str; 1] = ["https://ct.googleapis.com/pilot/"];
 
@@ -42,7 +44,10 @@ fn main() {
     let mut new_fps: Vec<CertificateFingerprint> = Vec::new();
     for (fp, info) in carver.map.iter() {
         let found = check_crtsh(fp).unwrap();
+        format_subject_issuer(&info.cert, &mut stdout()).unwrap();
+        println!("");
         println!("{}, crtsh seen = {}, {} paths", fp, found, info.paths.len());
+        println!("");
         if found {
             total_found += 1;
         } else {

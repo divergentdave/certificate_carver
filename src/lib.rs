@@ -16,9 +16,10 @@ extern crate serde_derive;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::str;
-use openssl::x509::{X509, X509VerifyResult};
+use openssl::nid::Nid;
+use openssl::x509::{X509, X509NameRef, X509VerifyResult};
 use regex::bytes::Regex;
 use reqwest::Url;
 use ring::digest::{digest, SHA256};
@@ -110,7 +111,7 @@ pub struct CertificateChain (
 pub struct CertificateInfo {
     pub paths: Vec<String>,
     pub der: CertificateBytes,
-    cert: X509,
+    pub cert: X509,
 }
 
 impl CertificateInfo {
@@ -362,4 +363,46 @@ pub fn check_crtsh(fp: &CertificateFingerprint) -> Result<bool, reqwest::Error> 
         None => Ok(true),
         Some(_) => Ok(false),
     }
+}
+
+pub fn format_name(name: &X509NameRef, f: &mut Write) -> std::io::Result<()> {
+    let mut space = false;
+    for (n, descr) in (&[
+            Nid::COUNTRYNAME,
+            Nid::ORGANIZATIONNAME,
+            Nid::ORGANIZATIONALUNITNAME,
+            Nid::DNQUALIFIER,
+            Nid::STATEORPROVINCENAME,
+            Nid::COMMONNAME,
+            Nid::SERIALNUMBER,
+            Nid::LOCALITYNAME,
+            Nid::TITLE,
+            Nid::SURNAME,
+            Nid::GIVENNAME,
+            Nid::INITIALS,
+            Nid::PSEUDONYM,
+            Nid::GENERATIONQUALIFIER]).into_iter().zip((&["C", "O", "OU",
+            "Distinguished Name Qualifier", "ST", "CN", "SN", "L", "T", "S", "G", "I",
+            "Pseudonym", "Generation Qualifier"]).into_iter()) {
+        for entry in name.entries_by_nid(*n) {
+            if space {
+                write!(f, " {}=", descr)?;
+            } else {
+                write!(f, "{}=", descr)?;
+            }
+            match entry.data().as_utf8() {
+                Ok(string) => write!(f, "{}", &string)?,
+                Err(_) => write!(f, "(undecodable string)")?,
+            }
+            space = true;
+        }
+    }
+    Ok(())
+}
+
+pub fn format_subject_issuer(cert: &X509, f: &mut Write) -> std::io::Result<()> {
+    write!(f, "issuer=")?;
+    format_name(cert.issuer_name(), f)?;
+    write!(f, ", subject=")?;
+    format_name(cert.subject_name(), f)
 }
