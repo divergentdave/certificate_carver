@@ -57,7 +57,7 @@ matrix:
     # OSX
     #- env: TARGET=i686-apple-darwin
     #  os: osx
-    #- env: TARGET=x86_64-apple-darwin
+    - env: TARGET=x86_64-apple-darwin
       os: osx
 
     # *BSD
