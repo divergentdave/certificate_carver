@@ -10,6 +10,8 @@ environment:
     # TODO Update this to match the name of your project.
     CRATE_NAME: certificate_carver
 
+    VCPKG_ROOT: C:\tools\vcpkg
+
   # TODO These are all the build jobs. Adjust as necessary. Comment out what you
   # don't need
   matrix:
@@ -31,8 +33,14 @@ install:
   - ps: >-
       If ($Env:TARGET -eq 'x86_64-pc-windows-gnu') {
         $Env:PATH += ';C:\msys64\mingw64\bin'
+        C:\msys64\usr\bin\pacman -S mingw-w64-x86_64-openssl
       } ElseIf ($Env:TARGET -eq 'i686-pc-windows-gnu') {
         $Env:PATH += ';C:\msys64\mingw32\bin'
+        C:\msys64\usr\bin\pacman -S mingw-w64-i686-openssl
+      } ElseIf ($Env:TARGET -eq 'x86_64-pc-windows-msvc') {
+        vcpkg install openssl:x64-windows
+      } ElseIf ($Env:TARGET -eq 'i686-pc-windows-msvc') {
+        vcpkg install openssl:x86-windows
       }
   - curl -sSf -o rustup-init.exe https://win.rustup.rs/
   - rustup-init.exe -y --default-host %TARGET% --default-toolchain %RUST_VERSION%
