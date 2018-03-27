@@ -86,15 +86,18 @@ matrix:
 before_install:
   - set -e
   - rustup self update
+  - set +e
 
 install:
+  - set -e
   - sh ci/install.sh
   - source ~/.cargo/env || true
+  - set +e
 
 script:
+  - set -e
   - bash ci/script.sh
-
-after_script: set +e
+  - set +e
 
 before_deploy:
   - sh ci/before_deploy.sh
