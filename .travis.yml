@@ -86,7 +86,6 @@ matrix:
 before_install:
   - set -e
   - rustup self update
-  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then rvm get stable; fi
 
 install:
   - sh ci/install.sh
