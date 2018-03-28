@@ -140,16 +140,16 @@ impl LogInfo {
         }
     }
 
-    pub fn fetch_roots(&self) -> Vec<CertificateBytes> {
+    pub fn fetch_roots(&self) -> Result<Vec<CertificateBytes>, reqwest::Error> {
         let mut vec = Vec::new();
         let url = self.url.join("ct/v1/get-roots").unwrap();
-        let mut resp = reqwest::get(url).unwrap();
+        let mut resp = reqwest::get(url)?;
         let body: GetRootsResponse = resp.json().unwrap();
         for encoded in body.certificates {
             let bytes = pem_base64_decode(&encoded).unwrap();
             vec.push(CertificateBytes(bytes));
         }
-        vec
+        Ok(vec)
     }
 
     pub fn submit_chain(&self, chain: &CertificateChain) -> Result<Result<AddChainResponse, reqwest::StatusCode>, reqwest::Error> {

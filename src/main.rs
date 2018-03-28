@@ -38,13 +38,20 @@ fn main() {
     let mut all_roots = TrustRoots::new();
     for log_url in LOG_URLS.iter() {
         let mut log = LogInfo::new(log_url);
-        log.roots = log.fetch_roots();
-        for root_der in &log.roots[..] {
-            carver.add_cert(root_der, "pilot roots");
+        match log.fetch_roots() {
+            Ok(roots) => {
+                log.roots = roots;
+                for root_der in &log.roots[..] {
+                    carver.add_cert(root_der, "pilot roots");
+                }
+                all_roots.add_roots(&log.roots);
+                log.trust_roots.add_roots(&log.roots);
+                logs.push(log);
+            },
+            Err(e) => {
+                println!("Warning: couldn't connect to {}, {:?}", log_url, e);
+            },
         }
-        all_roots.add_roots(&log.roots);
-        log.trust_roots.add_roots(&log.roots);
-        logs.push(log);
     }
 
     let issuer_lookup = carver.build_issuer_lookup();
