@@ -13,7 +13,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate serde_derive;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter};
 use std::fs::{File, read_dir};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -176,28 +176,28 @@ impl LogInfo {
 }
 
 pub struct TrustRoots {
-    root_fps_sorted: Vec<CertificateFingerprint>,
+    root_fps: HashSet<CertificateFingerprint>,
 }
 
 impl TrustRoots {
     pub fn new() -> TrustRoots {
         TrustRoots {
-            root_fps_sorted: Vec::new(),
+            root_fps: HashSet::new(),
         }
     }
 
     pub fn add_roots(&mut self, roots: &[CertificateBytes]) {
         for root in roots.iter() {
             let fp = root.fingerprint();
-            self.root_fps_sorted.push(fp);
+            self.root_fps.insert(fp);
         }
-        self.root_fps_sorted.sort();
     }
 
     pub fn test_fingerprint(&self, fp: &CertificateFingerprint) -> Result<(), ()> {
-        match self.root_fps_sorted.binary_search(fp) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(()),
+        if self.root_fps.contains(fp) {
+            Ok(())
+        } else {
+            Err(())
         }
     }
 }
