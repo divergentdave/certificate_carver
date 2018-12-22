@@ -217,7 +217,7 @@ impl Carver {
         if let Ok(cert) = X509::from_der(der.as_ref()) {
             let digest = der.fingerprint();
             let mut entry = self.map.entry(digest);
-            let mut info = entry.or_insert(CertificateInfo::new(der.clone(), cert));
+            let mut info = entry.or_insert_with(|| CertificateInfo::new(der.clone(), cert));
             info.paths.push(String::from(path));
         }
     }
@@ -317,7 +317,7 @@ impl Carver {
                 }
                 let subject = &subject_info.cert;
                 if issuer.issued(subject) == X509VerifyResult::OK {
-                    let mut issuer_fps = lookup.entry(subject_fp.clone()).or_insert(Vec::new());
+                    let mut issuer_fps = lookup.entry(subject_fp.clone()).or_insert_with(Vec::new);
                     issuer_fps.push(issuer_fp.clone());
                 }
             }
@@ -329,7 +329,7 @@ impl Carver {
                         leaf_fp: &CertificateFingerprint,
                         issuer_lookup: &HashMap<CertificateFingerprint, Vec<CertificateFingerprint>>,
                         trust_roots: &TrustRoots) -> Vec<CertificateChain> {
-        fn recurse<'a, 'b>(fp: &'a CertificateFingerprint,
+        fn recurse<'a>(fp: &'a CertificateFingerprint,
                            history: Vec<CertificateFingerprint>,
                            issuer_lookup: &'a HashMap<CertificateFingerprint, Vec<CertificateFingerprint>>,
                            trust_roots: &TrustRoots) -> Vec<Vec<CertificateFingerprint>> {
@@ -368,7 +368,7 @@ impl Carver {
         let fp_chains = recurse(leaf_fp, Vec::new(), issuer_lookup, trust_roots);
         fp_chains.iter().map(
             |fp_chain| CertificateChain(fp_chain.iter().map(
-                |fp| self.map.get(fp).unwrap().der.clone()
+                |fp| self.map[fp].der.clone()
             ).collect())
         ).collect()
     }

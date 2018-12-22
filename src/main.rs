@@ -61,19 +61,19 @@ fn main() {
     let mut count_no_chain = 0;
     let mut new_fps: Vec<CertificateFingerprint> = Vec::new();
     for (fp, info) in carver.map.iter() {
-        if let Ok(_) = all_roots.test_fingerprint(fp) {
+        if all_roots.test_fingerprint(fp).is_ok() {
             // skip root CAs
             continue;
         }
         let found = check_crtsh(fp).unwrap();
         format_subject_issuer(&info.cert, &mut stdout()).unwrap();
-        println!("");
+        println!();
         println!("{}, crtsh seen = {}, {} file paths", fp, found, info.paths.len());
         for path in info.paths.iter() {
             println!("{}", path);
         }
-        println!("");
-        if carver.build_chains(fp, &issuer_lookup, &all_roots).len() > 0 {
+        println!();
+        if !carver.build_chains(fp, &issuer_lookup, &all_roots).is_empty() {
             if found {
                 total_found += 1;
             } else {
@@ -87,7 +87,7 @@ fn main() {
     let total = total_found + total_not_found;
     println!("{}/{} in crt.sh already, {}/{} not yet in crt.sh ({} did not chain to roots)",
              total_found, total, total_not_found, total, count_no_chain);
-    println!("");
+    println!();
 
     let mut new_submission_count = 0;
     for fp in new_fps.iter() {
@@ -96,7 +96,7 @@ fn main() {
         let mut all_submission_errors = true;
         let mut last_submission_error: Option<reqwest::Error> = None;
         for log in logs.iter() {
-            if let Ok(_) = log.trust_roots.test_fingerprint(fp) {
+            if log.trust_roots.test_fingerprint(fp).is_ok() {
                 // skip root CAs
                 continue;
             }
@@ -112,9 +112,9 @@ fn main() {
                         all_submission_errors = false;
 
                         print!("submitted to {}: {}, ", log.get_url(), fp);
-                        format_subject_issuer(&carver.map.get(fp).unwrap().cert, &mut stdout()).unwrap();
-                        println!("");
-                        println!("");
+                        format_subject_issuer(&carver.map[fp].cert, &mut stdout()).unwrap();
+                        println!();
+                        println!();
                         // only submit one chain
                         break;
                     },
@@ -122,9 +122,9 @@ fn main() {
                         all_submission_errors = false;  // don't want to panic on this
 
                         print!("submission was rejected by {} with reason {}: {}, ", log.get_url(), status, fp);
-                        format_subject_issuer(&carver.map.get(fp).unwrap().cert, &mut stdout()).unwrap();
-                        println!("");
-                        println!("");
+                        format_subject_issuer(&carver.map[fp].cert, &mut stdout()).unwrap();
+                        println!();
+                        println!();
                     },
                     Err(e) => {
                         println!("submission error: {} {:?}", e, e);
