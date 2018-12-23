@@ -46,7 +46,7 @@ impl LogServers for MockLogServers {
 
     fn submit_chain(&self, _log: &LogInfo, _chain: &CertificateChain) -> Result<Result<AddChainResponse, reqwest::StatusCode>, Box<std::error::Error>> {
         let resp: AddChainResponse = serde_json::from_str(
-            "{}"
+            "{\"sct_version\":0,\"id\":\"pLkJkLQYWBSHuxOizGdwCjw1mAT5G9+443fNDsgN3BA=\",\"timestamp\":1519606625707,\"extensions\":\"\",\"signature\":\"BAMARzBFAiEAmqLo0/5CaAgNZdpsBgDKFAwKgQ4g2fLfMTUe8LLEYVQCIDhUD2coHB7IOV844lDSpm5Tmfh7FGaWtCFOZnSxGYiK\"}"
         )?;
         Ok(Ok(resp))
     }
