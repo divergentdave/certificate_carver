@@ -140,11 +140,9 @@ impl LogInfo {
         }
     }
 
-    fn fetch_roots(&self) -> Result<Vec<CertificateBytes>, Box<std::error::Error>> {
+    pub fn fetch_roots(&self, log_comms: &LogServers) -> Result<Vec<CertificateBytes>, Box<std::error::Error>> {
+        let body = log_comms.fetch_roots_resp(self)?;
         let mut vec = Vec::new();
-        let url = self.url.join("ct/v1/get-roots").unwrap();
-        let mut resp = reqwest::get(url)?;
-        let body: GetRootsResponse = resp.json().unwrap();
         for encoded in body.certificates {
             let bytes = pem_base64_decode(&encoded).unwrap();
             vec.push(CertificateBytes(bytes));
@@ -171,7 +169,26 @@ impl LogInfo {
     }
 
     pub fn get_url(&self) -> &Url {
-            &self.url
+        &self.url
+    }
+}
+
+pub trait LogServers {
+    fn fetch_roots_resp(&self, log: &LogInfo) -> Result<GetRootsResponse, Box<std::error::Error>>;
+    fn submit_chain(&self, log: &LogInfo, chain: &CertificateChain) -> Result<Result<AddChainResponse, reqwest::StatusCode>, Box<std::error::Error>>;
+}
+
+pub struct RealLogServers();
+
+impl LogServers for RealLogServers {
+    fn fetch_roots_resp(&self, log: &LogInfo) -> Result<GetRootsResponse, Box<std::error::Error>> {
+        let url = log.get_url().join("ct/v1/get-roots")?;
+        let mut resp = reqwest::get(url)?;
+        resp.json().map_err(|e: reqwest::Error| -> Box<std::error::Error> { Box::new(e) })
+    }
+
+    fn submit_chain(&self, log: &LogInfo, chain: &CertificateChain) -> Result<Result<AddChainResponse, reqwest::StatusCode>, Box<std::error::Error>> {
+        log.submit_chain(chain)
     }
 }
 
@@ -391,23 +408,6 @@ impl CrtShServer for RealCrtShServer {
             None => Ok(true),
             Some(_) => Ok(false),
         }
-    }
-}
-
-pub trait LogServers {
-    fn fetch_roots(&self, log: &mut LogInfo) -> Result<Vec<CertificateBytes>, Box<std::error::Error>>;
-    fn submit_chain(&self, log: &LogInfo, chain: &CertificateChain) -> Result<Result<AddChainResponse, reqwest::StatusCode>, Box<std::error::Error>>;
-}
-
-pub struct RealLogServers();
-
-impl LogServers for RealLogServers {
-    fn fetch_roots(&self, log: &mut LogInfo) -> Result<Vec<CertificateBytes>, Box<std::error::Error>> {
-        log.fetch_roots()
-    }
-
-    fn submit_chain(&self, log: &LogInfo, chain: &CertificateChain) -> Result<Result<AddChainResponse, reqwest::StatusCode>, Box<std::error::Error>> {
-        log.submit_chain(chain)
     }
 }
 

@@ -38,7 +38,7 @@ fn main() {
     let mut all_roots = TrustRoots::new();
     for log_url in LOG_URLS.iter() {
         let mut log = LogInfo::new(log_url);
-        match log_comms.fetch_roots(&mut log) {
+        match log.fetch_roots(log_comms.as_ref()) {
             Ok(roots) => {
                 log.roots = roots;
                 for root_der in &log.roots[..] {
