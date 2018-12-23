@@ -1,9 +1,11 @@
 extern crate base64;
+extern crate encoding;
 extern crate hex;
 extern crate openssl;
 extern crate regex;
 extern crate reqwest;
 extern crate ring;
+extern crate untrusted;
 extern crate zip;
 extern crate walkdir;
 
@@ -12,6 +14,8 @@ extern crate lazy_static;
 
 #[macro_use]
 extern crate serde_derive;
+
+pub mod x509;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter};
@@ -446,7 +450,7 @@ pub fn format_name(name: &X509NameRef, f: &mut Write) -> std::io::Result<()> {
     Ok(())
 }
 
-pub fn format_subject_issuer(cert: &X509, f: &mut Write) -> std::io::Result<()> {
+pub fn format_issuer_subject(cert: &X509, f: &mut Write) -> std::io::Result<()> {
     write!(f, "issuer=")?;
     format_name(cert.issuer_name(), f)?;
     write!(f, ", subject=")?;
