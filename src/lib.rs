@@ -15,7 +15,7 @@ extern crate serde_derive;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter};
-use std::fs::{File, read_dir};
+use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::str;
@@ -307,19 +307,31 @@ impl Carver {
         results
     }
 
-    pub fn scan_file<RS: Read + Seek>(&mut self, mut file: &mut RS, path: &str) {
+    pub fn scan_file_object<RS: Read + Seek>(&mut self, mut file: &mut RS, path: &str) {
         for certbytes in self.carve_file(&mut file).iter() {
             self.add_cert(&certbytes, path);
         }
     }
 
-    pub fn scan_directory(&mut self, root: &str) {
-        read_dir(Path::new(root)).unwrap();
+    fn scan_file_path(&mut self, path: &Path) {
+        if let Ok(mut file) = File::open(path) {
+            self.scan_file_object(&mut file, path.to_str().unwrap_or("(unprintable path)"));
+        }
+    }
+
+    fn scan_directory(&mut self, root: &str) {
         // TODO: parallelize? WalkDir doesn't have parallel iterator support yet
         for entry in WalkDir::new(root).into_iter().filter_map(|e| e.ok()) {
-            if let Ok(mut file) = File::open(entry.path()) {
-                self.scan_file(&mut file, entry.path().to_str().unwrap_or("(unprintable_path)"));
-            }
+            self.scan_file_path(entry.path());
+        }
+    }
+
+    pub fn scan_directory_or_file(&mut self, path_str: &str) {
+        let path = Path::new(path_str);
+        if path.is_dir() {
+            self.scan_directory(path_str);
+        } else {
+            self.scan_file_path(path);
         }
     }
 

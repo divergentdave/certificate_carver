@@ -26,7 +26,7 @@ fn main() {
     let mut iter = args();
     iter.next();  // skip argv[0]
     for arg in iter {
-        carver.scan_directory(&arg);
+        carver.scan_directory_or_file(&arg);
         empty_args = false;
     }
     if empty_args {
