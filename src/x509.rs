@@ -15,22 +15,22 @@ const CONTEXT_SPECIFIC: u8 = 2 << 6;
 #[derive(Clone, Copy, PartialEq)]
 #[repr(u8)]
 enum Tag {
-    Boolean = 0x01,
+    // Boolean = 0x01,
     Integer = 0x02,
     BitString = 0x03,
-    OctetString = 0x04,
-    Null = 0x05,
+    // OctetString = 0x04,
+    // Null = 0x05,
     OID = 0x06,
     Utf8String = 0x0C,
     PrintableString = 0x13,
     TeletexString = 0x14,
     Sequence = CONSTRUCTED | 0x10, // 0x30
     Set = CONSTRUCTED | 0x11, // 0x31
-    UTCTime = 0x17,
-    GeneralizedTime = 0x18,
+    // UTCTime = 0x17,
+    // GeneralizedTime = 0x18,
 
     ContextSpecificConstructed0 = CONTEXT_SPECIFIC | CONSTRUCTED | 0,
-    ContextSpecificConstructed1 = CONTEXT_SPECIFIC | CONSTRUCTED | 1,
+    // ContextSpecificConstructed1 = CONTEXT_SPECIFIC | CONSTRUCTED | 1,
     ContextSpecificConstructed3 = CONTEXT_SPECIFIC | CONSTRUCTED | 3,
 }
 
@@ -291,9 +291,9 @@ fn parse_signed_data<'a>(der: &mut untrusted::Reader<'a>) -> Result<untrusted::I
     let mark1 = der.mark();
     let tbs = expect_tag_and_get_value(der, Tag::Sequence, Error::BadDERCertificate)?;
     let mark2 = der.mark();
-    let data = der.get_input_between_marks(mark1, mark2).unwrap();
-    let algorithm = expect_tag_and_get_value(der, Tag::Sequence, Error::BadDERAlgorithm)?;
-    let signature = bit_string_with_no_unused_bits(der, Error::BadDERSignature2)?;
+    let _data = der.get_input_between_marks(mark1, mark2).unwrap();
+    let _algorithm = expect_tag_and_get_value(der, Tag::Sequence, Error::BadDERAlgorithm)?;
+    let _signature = bit_string_with_no_unused_bits(der, Error::BadDERSignature2)?;
     Ok(tbs)
 }
 
