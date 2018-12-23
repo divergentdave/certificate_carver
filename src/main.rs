@@ -6,7 +6,7 @@ extern crate reqwest;
 use std::env::args;
 use std::io::stdout;
 
-use certificate_carver::{Carver, CertificateFingerprint, LogInfo, TrustRoots, check_crtsh, format_subject_issuer};
+use certificate_carver::{Carver, CertificateFingerprint, LogInfo, TrustRoots, CrtShServer, RealCrtShServer, LogServers, RealLogServers, format_subject_issuer};
 
 const LOG_URLS: [&str; 10] = [
     "https://ct.googleapis.com/pilot/",
@@ -23,6 +23,7 @@ const LOG_URLS: [&str; 10] = [
 
 fn main() {
     let mut carver = Carver::new();
+    let crtsh: Box<CrtShServer> = Box::new(RealCrtShServer());
     let mut empty_args = true;
     let mut iter = args();
     iter.next();  // skip argv[0]
@@ -34,15 +35,16 @@ fn main() {
         panic!("pass at least one directory as a command line argument");
     }
 
+    let log_comms: Box<LogServers> = Box::new(RealLogServers());
     let mut logs = Vec::new();
     let mut all_roots = TrustRoots::new();
     for log_url in LOG_URLS.iter() {
         let mut log = LogInfo::new(log_url);
-        match log.fetch_roots() {
+        match log_comms.fetch_roots(&mut log) {
             Ok(roots) => {
                 log.roots = roots;
                 for root_der in &log.roots[..] {
-                    carver.add_cert(root_der, "pilot roots");
+                    carver.add_cert(root_der, "log roots");
                 }
                 all_roots.add_roots(&log.roots);
                 log.trust_roots.add_roots(&log.roots);
@@ -65,7 +67,7 @@ fn main() {
             // skip root CAs
             continue;
         }
-        let found = check_crtsh(fp).unwrap();
+        let found = crtsh.check_crtsh(fp).unwrap();
         format_subject_issuer(&info.cert, &mut stdout()).unwrap();
         println!();
         println!("{}, crtsh seen = {}, {} file paths", fp, found, info.paths.len());
@@ -103,7 +105,7 @@ fn main() {
             let chains = carver.build_chains(fp, &issuer_lookup, &log.trust_roots);
             for chain in chains.iter() {
                 any_chain = true;
-                match log.submit_chain(&chain) {
+                match log_comms.submit_chain(&log, &chain) {
                     Ok(Ok(_)) => {
                         if !any_submission_success {
                             new_submission_count += 1;
