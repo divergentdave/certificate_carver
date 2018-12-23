@@ -96,7 +96,7 @@ fn main() {
         let mut any_chain = false;
         let mut any_submission_success = false;
         let mut all_submission_errors = true;
-        let mut last_submission_error: Option<reqwest::Error> = None;
+        let mut last_submission_error: Option<Box<std::error::Error>> = None;
         for log in logs.iter() {
             if log.trust_roots.test_fingerprint(fp).is_ok() {
                 // skip root CAs
@@ -136,7 +136,9 @@ fn main() {
             }
         }
         if any_chain && all_submission_errors {
-            panic!(last_submission_error.unwrap());
+            let error = last_submission_error.unwrap();
+            let error_desc = String::from(error.description());
+            panic!(error_desc);
         }
     }
     println!("Successfully submitted {}/{} new certificates", new_submission_count, new_fps.len());
