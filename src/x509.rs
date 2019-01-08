@@ -34,36 +34,21 @@ enum Tag {
     ContextSpecificConstructed3 = CONTEXT_SPECIFIC | CONSTRUCTED | 3,
 }
 
-const OID_COUNTRY_NAME: [u8; 3] = [0x55, 0x04, 0x06];
-const OID_ORGANIZATION_NAME: [u8; 3] = [0x55, 0x04, 0x0A];
-const OID_ORGANIZATIONAL_UNIT_NAME: [u8; 3] = [0x55, 0x04, 0x0B];
-const OID_DISTINGUISHED_NAME_QUALIFIER: [u8; 3] = [0x55, 0x04, 0x2E];
-const OID_STATE_OR_PROVINCE_NAME: [u8; 3] = [0x55, 0x04, 0x08];
-const OID_COMMON_NAME: [u8; 3] = [0x55, 0x04, 0x03];
-const OID_SERIAL_NUMBER: [u8; 3] = [0x55, 0x04, 0x05];
-const OID_LOCALITY_NAME: [u8; 3] = [0x55, 0x04, 0x07];
-const OID_TITLE: [u8; 3] = [0x55, 0x04, 0x0C];
-const OID_SURNAME: [u8; 3] = [0x55, 0x04, 0x04];
-const OID_GIVEN_NAME: [u8; 3] = [0x55, 0x04, 0x2A];
-const OID_INITIALS: [u8; 3] = [0x55, 0x04, 0x2B];
-const OID_PSEUDONYM: [u8; 3] = [0x55, 0x04, 0x41];
-const OID_GENERATION_QUALIFIER: [u8; 3] = [0x55, 0x04, 0x2C];
-
-const NAME_ATTRIBUTES_DESCRIPTIONS: [(&[u8], &str); 14] = [
-    (&OID_COUNTRY_NAME, "C"),
-    (&OID_ORGANIZATION_NAME, "O"),
-    (&OID_ORGANIZATIONAL_UNIT_NAME, "OU"),
-    (&OID_DISTINGUISHED_NAME_QUALIFIER, "Distinguished Name Qualifier"),
-    (&OID_STATE_OR_PROVINCE_NAME, "ST"),
-    (&OID_COMMON_NAME, "CN"),
-    (&OID_SERIAL_NUMBER, "SN"),
-    (&OID_LOCALITY_NAME, "L"),
-    (&OID_TITLE, "T"),
-    (&OID_SURNAME, "S"),
-    (&OID_GIVEN_NAME, "G"),
-    (&OID_INITIALS, "I"),
-    (&OID_PSEUDONYM, "Pseudonym"),
-    (&OID_GENERATION_QUALIFIER, "Generation Qualifier")
+const NAME_ATTRIBUTES_DESCRIPTIONS: [(NameType, &str); 14] = [
+    (NameType::CountryName, "C"),
+    (NameType::OrganizationName, "O"),
+    (NameType::OrganizationalUnitName, "OU"),
+    (NameType::DistinguishedNameQualifier, "Distinguished Name Qualifier"),
+    (NameType::StateOrProvinceName, "ST"),
+    (NameType::CommonName, "CN"),
+    (NameType::SerialNumber, "SN"),
+    (NameType::LocalityName, "L"),
+    (NameType::Title, "T"),
+    (NameType::Surname, "S"),
+    (NameType::GivenName, "G"),
+    (NameType::Initials, "I"),
+    (NameType::Pseudonym, "Pseudonym"),
+    (NameType::GenerationQualifier, "Generation Qualifier")
 ];
 
 #[derive(Clone)]
@@ -79,7 +64,7 @@ impl CertificateBytes {
         CertificateFingerprint(arr)
     }
 
-    pub fn parse_cert_names(&self) -> Result<(NameBytes, NameBytes), Error> {
+    pub fn parse_cert_names(&self) -> Result<(NameInfo, NameInfo), Error> {
         let cert_der = untrusted::Input::from(self.as_ref());
         let tbs_der = cert_der.read_all(Error::BadDERCertificateExtraData, |cert_der| {
             nested(cert_der, Tag::Sequence, Error::BadDERCertificate, Error::BadDERCertificateExtraData, parse_signed_data)
@@ -117,10 +102,10 @@ impl CertificateBytes {
 
             Ok((issuer, subject))
         })?;
-        Ok((NameBytes(issuer), NameBytes(subject)))
+        Ok((NameInfo::new(issuer), NameInfo::new(subject)))
     }
 
-    pub fn format_issuer_subject(&self, issuer: NameBytes, subject: NameBytes, f: &mut Write) -> std::io::Result<()> {
+    pub fn format_issuer_subject(&self, issuer: NameInfo, subject: NameInfo, f: &mut Write) -> std::io::Result<()> {
         write!(f, "issuer=")?;
         issuer.format(f)?;
         write!(f, ", subject=")?;
@@ -134,39 +119,98 @@ impl AsRef<[u8]> for CertificateBytes {
     }
 }
 
-pub struct NameTypeValue {
-    pub type_oid: Vec<u8>,
-    pub value: Vec<u8>
-}
-
 #[derive(PartialEq, Eq)]
-pub struct NameBytes (
-    pub Vec<u8>
-);
-
-fn format_directory_string(f: &mut Write, value: &Vec<u8>) -> std::io::Result<()> {
-    let input = untrusted::Input::from(value.as_ref());
-    let (tag, inner) = input.read_all(Error::BadDERString, |value_der| {
-        read_tag_and_get_value(value_der, Error::BadDERString)
-    }).unwrap();
-    let tag_usize: usize = tag as usize;
-    if tag_usize == (Tag::Utf8String as usize) {
-        f.write(inner.as_slice_less_safe())
-    } else if tag_usize == (Tag::PrintableString as usize) {
-        f.write(inner.as_slice_less_safe())
-    } else if tag_usize == (Tag::TeletexString as usize) {
-        let mut decoded = String::new();
-        ISO_8859_1.decode_to(inner.as_slice_less_safe(), DecoderTrap::Replace, &mut decoded).unwrap();
-        f.write(decoded.as_ref())
-    } else {
-        f.write(b"(unsupported string type)")
-    }.map(|_| ())
+pub enum NameType {
+    CountryName,
+    OrganizationName,
+    OrganizationalUnitName,
+    DistinguishedNameQualifier,
+    StateOrProvinceName,
+    CommonName,
+    SerialNumber,
+    LocalityName,
+    Title,
+    Surname,
+    GivenName,
+    Initials,
+    Pseudonym,
+    GenerationQualifier,
+    UnrecognizedType
 }
 
-impl NameBytes {
-    pub fn parse_rdns(&self) -> Result<Vec<NameTypeValue>, Error> {
+impl From<&[u8]> for NameType {
+    fn from(type_oid: &[u8]) -> NameType {
+        if type_oid.len() != 3 || type_oid[0] != 0x55 || type_oid[1] != 0x04 {
+            NameType::UnrecognizedType
+        } else {
+            match type_oid[2] {
+                0x06 => NameType::CountryName,
+                0x0A => NameType::OrganizationName,
+                0x0B => NameType::OrganizationalUnitName,
+                0x2E => NameType::DistinguishedNameQualifier,
+                0x08 => NameType::StateOrProvinceName,
+                0x03 => NameType::CommonName,
+                0x05 => NameType::SerialNumber,
+                0x07 => NameType::LocalityName,
+                0x0C => NameType::Title,
+                0x04 => NameType::Surname,
+                0x2A => NameType::GivenName,
+                0x2B => NameType::Initials,
+                0x41 => NameType::Pseudonym,
+                0x2C => NameType::GenerationQualifier,
+                _ => NameType::UnrecognizedType
+            }
+        }
+    }
+}
+
+pub struct NameTypeValue {
+    pub name_type: NameType,
+    pub value: Option<String>
+}
+
+fn parse_directory_string(raw: &Vec<u8>) -> Option<String> {
+    let input = untrusted::Input::from(raw.as_ref());
+    if let Ok((tag, inner)) = input.read_all(Error::BadDERString, |value_der| {
+        read_tag_and_get_value(value_der, Error::BadDERString)
+    }) {
+        let tag_usize: usize = tag as usize;
+        let slice = inner.as_slice_less_safe();
+        if tag_usize == (Tag::Utf8String as usize) {
+            String::from_utf8(slice.to_vec()).ok()
+        } else if tag_usize == (Tag::PrintableString as usize) {
+            String::from_utf8(slice.to_vec()).ok()
+        } else if tag_usize == (Tag::TeletexString as usize) {
+            let mut decoded = String::new();
+            match ISO_8859_1.decode_to(slice, DecoderTrap::Replace, &mut decoded) {
+                Ok(()) => Some(decoded),
+                Err(_) => None
+            }
+        } else {
+            return None
+        }
+    } else {
+        None
+    }
+}
+
+pub struct NameInfo {
+    bytes: Vec<u8>,
+    parts: Result<Vec<NameTypeValue>, Error>
+}
+
+impl NameInfo {
+    pub fn new(bytes: Vec<u8>) -> NameInfo {
+        let parts = NameInfo::parse_rdns(&bytes);
+        NameInfo {
+            bytes: bytes,
+            parts: parts
+        }
+    }
+
+    fn parse_rdns(bytes: &Vec<u8>) -> Result<Vec<NameTypeValue>, Error> {
         let mut results: Vec<NameTypeValue> = Vec::new();
-        let name_der = untrusted::Input::from(self.as_ref());
+        let name_der = untrusted::Input::from(bytes.as_ref());
         name_der.read_all(Error::BadDERDistinguishedNameExtraData, |name_der| {
             loop {
                 nested(name_der, Tag::Set, Error::BadDERRelativeDistinguishedName, Error::BadDERRelativeDistinguishedNameExtraData, |rdn_der| {
@@ -180,8 +224,8 @@ impl NameBytes {
                             let value_data = attrib_der.get_input_between_marks(mark1, mark2).unwrap();
                             let value_data = copy_input(&value_data);
                             results.push(NameTypeValue {
-                                type_oid: attrib_type,
-                                value: value_data
+                                name_type: NameType::from(attrib_type.as_ref()),
+                                value: parse_directory_string(&value_data)
                             });
                             Ok(())
                         })?;
@@ -202,34 +246,46 @@ impl NameBytes {
 
     pub fn format(&self, f: &mut Write) -> std::io::Result<()> {
         let mut space = false;
-        let rdns = match self.parse_rdns() {
-            Ok(rdns) => rdns,
-            Err(_) => {
-                return write!(f, "DER error parsing name");
-            }
-        };
-        for (oid_bytes, type_description) in NAME_ATTRIBUTES_DESCRIPTIONS.iter() {
-            for type_value in rdns.iter() {
-                if type_value.type_oid == *oid_bytes {
-                    if space {
-                        write!(f, " {}=", type_description)?;
-                    } else {
-                        write!(f, "{}=", type_description)?;
+        match self.parts {
+            Ok(ref parts) => {
+                for (name_type, type_description) in NAME_ATTRIBUTES_DESCRIPTIONS.iter() {
+                    for type_value in parts.iter() {
+                        if type_value.name_type == *name_type {
+                            if space {
+                                write!(f, " {}=", type_description)?;
+                            } else {
+                                write!(f, "{}=", type_description)?;
+                            }
+                            match &type_value.value {
+                                Some(string) => write!(f, "{}", string)?,
+                                None => write!(f, "(unparseable value)")?
+                            }
+                            space = true;
+                        }
                     }
-                    format_directory_string(f, &type_value.value)?;
-                    space = true;
                 }
+            },
+            Err(_) => {
+                write!(f, "(unparseable name)")?;
             }
         }
         Ok(())
     }
 }
 
-impl AsRef<[u8]> for NameBytes {
+impl AsRef<[u8]> for NameInfo {
     fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
+        self.bytes.as_ref()
     }
 }
+
+impl PartialEq for NameInfo {
+    fn eq(&self, other: &NameInfo) -> bool {
+        self.bytes == other.bytes
+    }
+}
+
+impl Eq for NameInfo {}
 
 #[derive(Clone, Copy, Debug)]
 pub enum Error {

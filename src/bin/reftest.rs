@@ -26,8 +26,6 @@ fn main() {
         let mut text2: Vec<u8> = Vec::new();
         let cert2 = x509::CertificateBytes(info.der.0.clone());
         let (issuer, subject) = cert2.parse_cert_names().unwrap();
-        issuer.parse_rdns().unwrap();
-        subject.parse_rdns().unwrap();
         cert2.format_issuer_subject(issuer, subject, &mut text2).unwrap();
 
         if text1 == text2 {
