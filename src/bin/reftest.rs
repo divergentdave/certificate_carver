@@ -18,8 +18,9 @@ fn main() {
         panic!("pass at least one directory as a command line argument");
     }
 
+    let mut match_count = 0;
+    let mut mismatch_count = 0;
     for (_fp, info) in carver.map.iter() {
-        println!("{}", info.paths[0]);
         let mut text1: Vec<u8> = Vec::new();
         format_issuer_subject(&info.cert, &mut text1).unwrap();
 
@@ -29,11 +30,14 @@ fn main() {
         cert2.format_issuer_subject(issuer, subject, &mut text2).unwrap();
 
         if text1 == text2 {
-            println!("Match");
+            match_count += 1;
         } else {
+            println!("{}", info.paths[0]);
             println!("Mismatch");
             println!("{}", String::from_utf8(text1).unwrap());
             println!("{}", String::from_utf8(text2).unwrap());
+            mismatch_count += 1;
         }
     }
+    println!("{} certificates matched, {} certificates didn't match", match_count, mismatch_count);
 }
