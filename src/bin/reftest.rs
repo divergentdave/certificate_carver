@@ -25,9 +25,8 @@ fn main() {
         format_issuer_subject(&info.cert, &mut text1).unwrap();
 
         let mut text2: Vec<u8> = Vec::new();
-        let cert2 = x509::CertificateBytes(info.der.0.clone());
-        let (issuer, subject) = cert2.parse_cert_names().unwrap();
-        cert2.format_issuer_subject(issuer, subject, &mut text2).unwrap();
+        let cert2 = x509::CertificateInfo::new(info.der.0.clone()).unwrap();
+        cert2.format_issuer_subject(&mut text2).unwrap();
 
         if text1 == text2 {
             match_count += 1;

@@ -52,20 +52,20 @@ const NAME_ATTRIBUTES_DESCRIPTIONS: [(NameType, &str); 14] = [
 ];
 
 #[derive(Clone)]
-pub struct CertificateBytes (
-    pub Vec<u8>
-);
+pub struct CertificateInfo {
+    bytes: Vec<u8>,
+    issuer: NameInfo,
+    subject: NameInfo
+}
 
-impl CertificateBytes {
-    pub fn fingerprint(&self) -> CertificateFingerprint {
-        let digest = digest(&SHA256, self.as_ref());
-        let mut arr: [u8; 32] = Default::default();
-        arr.copy_from_slice(digest.as_ref());
-        CertificateFingerprint(arr)
+impl CertificateInfo {
+    pub fn new(bytes: Vec<u8>) -> Result<CertificateInfo, Error> {
+        let (issuer, subject) = CertificateInfo::parse_cert_names(bytes.as_ref())?;
+        Ok(CertificateInfo { bytes, issuer, subject })
     }
 
-    pub fn parse_cert_names(&self) -> Result<(NameInfo, NameInfo), Error> {
-        let cert_der = untrusted::Input::from(self.as_ref());
+    fn parse_cert_names(bytes: &[u8]) -> Result<(NameInfo, NameInfo), Error> {
+        let cert_der = untrusted::Input::from(bytes);
         let tbs_der = cert_der.read_all(Error::BadDERCertificateExtraData, |cert_der| {
             nested(cert_der, Tag::Sequence, Error::BadDERCertificate, Error::BadDERCertificateExtraData, parse_signed_data)
         })?;
@@ -105,21 +105,32 @@ impl CertificateBytes {
         Ok((NameInfo::new(issuer), NameInfo::new(subject)))
     }
 
-    pub fn format_issuer_subject(&self, issuer: NameInfo, subject: NameInfo, f: &mut Write) -> std::io::Result<()> {
+    pub fn fingerprint(&self) -> CertificateFingerprint {
+        let digest = digest(&SHA256, self.as_ref());
+        let mut arr: [u8; 32] = Default::default();
+        arr.copy_from_slice(digest.as_ref());
+        CertificateFingerprint(arr)
+    }
+
+    pub fn format_issuer_subject(&self, f: &mut Write) -> std::io::Result<()> {
         write!(f, "issuer=")?;
-        issuer.format(f)?;
+        self.issuer.format(f)?;
         write!(f, ", subject=")?;
-        subject.format(f)
+        self.subject.format(f)
+    }
+
+    pub fn issued(&self, other: &CertificateInfo) -> bool {
+        self.subject == other.issuer
     }
 }
 
-impl AsRef<[u8]> for CertificateBytes {
+impl AsRef<[u8]> for CertificateInfo {
     fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
+        self.bytes.as_ref()
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 pub enum NameType {
     CountryName,
     OrganizationName,
@@ -164,6 +175,7 @@ impl From<&[u8]> for NameType {
     }
 }
 
+#[derive(Clone)]
 pub struct NameTypeValue {
     pub name_type: NameType,
     pub value: Option<String>
@@ -194,6 +206,7 @@ fn parse_directory_string(raw: &Vec<u8>) -> Option<String> {
     }
 }
 
+#[derive(Clone)]
 pub struct NameInfo {
     bytes: Vec<u8>,
     parts: Result<Vec<NameTypeValue>, Error>

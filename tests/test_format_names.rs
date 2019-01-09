@@ -56,10 +56,9 @@ fn test_format_names_emptyissuername() {
 }
 
 fn test_format_names_new_helper(pem: &[u8], expected: &str) {
-    let cert = x509::CertificateBytes(decode_pem(pem));
+    let cert = x509::CertificateInfo::new(decode_pem(pem)).unwrap();
     let mut cur: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-    let (issuer, subject) = cert.parse_cert_names().unwrap();
-    cert.format_issuer_subject(issuer, subject, &mut cur).unwrap();
+    cert.format_issuer_subject(&mut cur).unwrap();
     cur.seek(SeekFrom::Start(0)).unwrap();
     let mut string = String::new();
     cur.read_to_string(&mut string).unwrap();
