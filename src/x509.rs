@@ -212,7 +212,7 @@ impl NameInfo {
         let mut results: Vec<NameTypeValue> = Vec::new();
         let name_der = untrusted::Input::from(bytes.as_ref());
         name_der.read_all(Error::BadDERDistinguishedNameExtraData, |name_der| {
-            loop {
+            while !name_der.at_end() {
                 nested(name_der, Tag::Set, Error::BadDERRelativeDistinguishedName, Error::BadDERRelativeDistinguishedNameExtraData, |rdn_der| {
                     loop {
                         nested(rdn_der, Tag::Sequence, Error::BadDERRDNAttribute, Error::BadDERRDNAttributeExtraData, |attrib_der| {
@@ -235,9 +235,6 @@ impl NameInfo {
                     }
                     Ok(())
                 })?;
-                if name_der.at_end() {
-                    break;
-                }
             }
             Ok(())
         })?;
