@@ -336,7 +336,7 @@ fn expect_tag_and_get_value<'a>(input: &mut untrusted::Reader<'a>, tag: Tag, err
 
 #[inline(always)]
 fn read_tag_and_get_value<'a>(input: &mut untrusted::Reader<'a>, error: Error) -> Result<(u8, untrusted::Input<'a>), Error> {
-    ring::der::read_tag_and_get_value(input).map_err(|_| error)
+    ring::io::der::read_tag_and_get_value(input).map_err(|_| error)
 }
 
 fn skip(input: &mut untrusted::Reader, tag: Tag, error: Error) -> Result<(), Error> {
