@@ -54,16 +54,16 @@ const NAME_ATTRIBUTES_DESCRIPTIONS: [(NameType, &str); 14] = [
 ];
 
 #[derive(Clone)]
-pub struct CertificateInfo {
+pub struct Certificate {
     bytes: Vec<u8>,
     issuer: NameInfo,
     subject: NameInfo
 }
 
-impl CertificateInfo {
-    pub fn new(bytes: Vec<u8>) -> Result<CertificateInfo, Error> {
-        let (issuer, subject) = CertificateInfo::parse_cert_names(bytes.as_ref())?;
-        Ok(CertificateInfo { bytes, issuer, subject })
+impl Certificate {
+    pub fn new(bytes: Vec<u8>) -> Result<Certificate, Error> {
+        let (issuer, subject) = Certificate::parse_cert_names(bytes.as_ref())?;
+        Ok(Certificate { bytes, issuer, subject })
     }
 
     fn parse_cert_names(bytes: &[u8]) -> Result<(NameInfo, NameInfo), Error> {
@@ -121,12 +121,12 @@ impl CertificateInfo {
         self.subject.format(f)
     }
 
-    pub fn issued(&self, other: &CertificateInfo) -> bool {
+    pub fn issued(&self, other: &Certificate) -> bool {
         self.subject == other.issuer
     }
 }
 
-impl AsRef<[u8]> for CertificateInfo {
+impl AsRef<[u8]> for Certificate {
     fn as_ref(&self) -> &[u8] {
         self.bytes.as_ref()
     }

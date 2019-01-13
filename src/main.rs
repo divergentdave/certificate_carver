@@ -6,7 +6,7 @@ extern crate reqwest;
 use std::env::args;
 use std::io::stdout;
 
-use certificate_carver::{Carver, CertificateFingerprint, LogInfo, TrustRoots, CrtShServer, RealCrtShServer, LogServers, RealLogServers, format_issuer_subject};
+use certificate_carver::{Carver, CertificateFingerprint, LogInfo, TrustRoots, CrtShServer, RealCrtShServer, LogServers, RealLogServers};
 
 const LOG_URLS: [&str; 8] = [
     "https://ct.googleapis.com/pilot/",
@@ -66,7 +66,7 @@ fn main() {
             continue;
         }
         let found = crtsh.check_crtsh(fp).unwrap();
-        format_issuer_subject(&info.cert, &mut stdout()).unwrap();
+        &info.cert.format_issuer_subject(&mut stdout()).unwrap();
         println!();
         println!("{}, crtsh seen = {}, {} file paths", fp, found, info.paths.len());
         for path in info.paths.iter() {
@@ -112,7 +112,7 @@ fn main() {
                         all_submission_errors = false;
 
                         print!("submitted to {}: {}, ", log.get_url(), fp);
-                        format_issuer_subject(&carver.map[fp].cert, &mut stdout()).unwrap();
+                        carver.map[fp].cert.format_issuer_subject(&mut stdout()).unwrap();
                         println!();
                         println!();
                         // only submit one chain
@@ -122,7 +122,7 @@ fn main() {
                         all_submission_errors = false;  // don't want to panic on this
 
                         print!("submission was rejected by {} with reason {}: {}, ", log.get_url(), status, fp);
-                        format_issuer_subject(&carver.map[fp].cert, &mut stdout()).unwrap();
+                        carver.map[fp].cert.format_issuer_subject(&mut stdout()).unwrap();
                         println!();
                         println!();
                     },
