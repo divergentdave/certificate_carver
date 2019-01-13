@@ -1,9 +1,12 @@
 extern crate base64;
+extern crate encoding;
 extern crate hex;
-extern crate openssl;
 extern crate regex;
 extern crate reqwest;
 extern crate ring;
+extern crate stringprep;
+extern crate unicode_normalization;
+extern crate untrusted;
 extern crate zip;
 extern crate walkdir;
 
@@ -13,19 +16,22 @@ extern crate lazy_static;
 #[macro_use]
 extern crate serde_derive;
 
+pub mod x509;
+pub mod ldapprep;
+
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::str;
-use openssl::nid::Nid;
-use openssl::x509::{X509, X509NameRef, X509VerifyResult};
 use regex::bytes::Regex;
 use reqwest::Url;
 use ring::digest::{digest, SHA256};
 use walkdir::WalkDir;
 use zip::read::ZipArchive;
+
+use x509::Certificate;
 
 const ZIP_MAGIC: [u8; 4] = [0x50, 0x4b, 3, 4];
 
@@ -108,16 +114,15 @@ pub struct CertificateChain (
     pub Vec<CertificateBytes>
 );
 
-// make a class to hold certificate infos, and counts of certs, unchainable, submitted, etc.
-pub struct CertificateInfo {
+pub struct CertificateRecord {
     pub paths: Vec<String>,
     pub der: CertificateBytes,
-    pub cert: X509,
+    pub cert: Certificate,
 }
 
-impl CertificateInfo {
-    fn new(der: CertificateBytes, cert: X509) -> CertificateInfo {
-        CertificateInfo {
+impl CertificateRecord {
+    fn new(der: CertificateBytes, cert: Certificate) -> CertificateRecord {
+        CertificateRecord {
             paths: Vec::new(),
             der: der.clone(),
             cert,
@@ -220,7 +225,7 @@ impl TrustRoots {
 }
 
 pub struct Carver {
-    pub map: HashMap<CertificateFingerprint, CertificateInfo>,
+    pub map: HashMap<CertificateFingerprint, CertificateRecord>,
 }
 
 impl Carver {
@@ -231,10 +236,10 @@ impl Carver {
     }
 
     pub fn add_cert(&mut self, der: &CertificateBytes, path: &str) {
-        if let Ok(cert) = X509::from_der(der.as_ref()) {
+        if let Ok(cert) = Certificate::new(der.0.clone()) {
             let digest = der.fingerprint();
             let mut entry = self.map.entry(digest);
-            let mut info = entry.or_insert_with(|| CertificateInfo::new(der.clone(), cert));
+            let mut info = entry.or_insert_with(|| CertificateRecord::new(der.clone(), cert));
             info.paths.push(String::from(path));
         }
     }
@@ -345,7 +350,7 @@ impl Carver {
                     continue;
                 }
                 let subject = &subject_info.cert;
-                if issuer.issued(subject) == X509VerifyResult::OK {
+                if issuer.issued(subject) {
                     let mut issuer_fps = lookup.entry(subject_fp.clone()).or_insert_with(Vec::new);
                     issuer_fps.push(issuer_fp.clone());
                 }
@@ -421,46 +426,4 @@ impl CrtShServer for RealCrtShServer {
             Some(_) => Ok(false),
         }
     }
-}
-
-pub fn format_name(name: &X509NameRef, f: &mut Write) -> std::io::Result<()> {
-    let mut space = false;
-    for (n, descr) in (&[
-            Nid::COUNTRYNAME,
-            Nid::ORGANIZATIONNAME,
-            Nid::ORGANIZATIONALUNITNAME,
-            Nid::DNQUALIFIER,
-            Nid::STATEORPROVINCENAME,
-            Nid::COMMONNAME,
-            Nid::SERIALNUMBER,
-            Nid::LOCALITYNAME,
-            Nid::TITLE,
-            Nid::SURNAME,
-            Nid::GIVENNAME,
-            Nid::INITIALS,
-            Nid::PSEUDONYM,
-            Nid::GENERATIONQUALIFIER]).into_iter().zip((&["C", "O", "OU",
-            "Distinguished Name Qualifier", "ST", "CN", "SN", "L", "T", "S", "G", "I",
-            "Pseudonym", "Generation Qualifier"]).into_iter()) {
-        for entry in name.entries_by_nid(*n) {
-            if space {
-                write!(f, " {}=", descr)?;
-            } else {
-                write!(f, "{}=", descr)?;
-            }
-            match entry.data().as_utf8() {
-                Ok(string) => write!(f, "{}", &string)?,
-                Err(_) => write!(f, "(undecodable string)")?,
-            }
-            space = true;
-        }
-    }
-    Ok(())
-}
-
-pub fn format_subject_issuer(cert: &X509, f: &mut Write) -> std::io::Result<()> {
-    write!(f, "issuer=")?;
-    format_name(cert.issuer_name(), f)?;
-    write!(f, ", subject=")?;
-    format_name(cert.subject_name(), f)
 }

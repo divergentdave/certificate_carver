@@ -1,21 +1,20 @@
 extern crate certificate_carver;
-extern crate openssl;
+
+mod utils;
 
 use std::io::Cursor;
-use openssl::x509::{X509, X509VerifyResult};
 
 use certificate_carver::{Carver, CertificateBytes, LogInfo};
+use certificate_carver::x509::Certificate;
+
+use utils::decode_pem;
 
 #[test]
 fn test_fixture_bespoke_certs() {
-    let cert3 = X509::from_pem(include_bytes!("files/bespoke/intermediate_a/intermediate_b_signed_by_intermediate_a.crt")).unwrap();
-    let cert4 = X509::from_pem(include_bytes!("files/bespoke/intermediate_b/intermediate_a_signed_by_intermediate_b.crt")).unwrap();
-    assert!(cert3.issued(&cert4) == X509VerifyResult::OK);
-    assert!(cert4.issued(&cert3) == X509VerifyResult::OK);
-}
-
-fn pem_to_der(pem: &[u8]) -> Vec<u8> {
-    X509::from_pem(pem).unwrap().to_der().unwrap()
+    let cert3 = Certificate::new(decode_pem(include_bytes!("files/bespoke/intermediate_a/intermediate_b_signed_by_intermediate_a.crt"))).unwrap();
+    let cert4 = Certificate::new(decode_pem(include_bytes!("files/bespoke/intermediate_b/intermediate_a_signed_by_intermediate_b.crt"))).unwrap();
+    assert!(cert3.issued(&cert4));
+    assert!(cert4.issued(&cert3));
 }
 
 #[test]
@@ -26,7 +25,7 @@ fn test_cross_signatures() {
     let cert2_pem = include_bytes!("files/bespoke/intermediate_b_signed_by_rootca.crt");
     let cert3_pem = include_bytes!("files/bespoke/intermediate_a/intermediate_b_signed_by_intermediate_a.crt");
     let cert4_pem = include_bytes!("files/bespoke/intermediate_b/intermediate_a_signed_by_intermediate_b.crt");
-    let cert4_fp = CertificateBytes(pem_to_der(cert4_pem)).fingerprint();
+    let cert4_fp = CertificateBytes(decode_pem(cert4_pem)).fingerprint();
     let mut root = Cursor::new(root_pem.to_vec());
     let mut cert1 = Cursor::new(cert1_pem.to_vec());
     let mut cert2 = Cursor::new(cert2_pem.to_vec());
@@ -41,7 +40,7 @@ fn test_cross_signatures() {
     let issuer_lookup = carver.build_issuer_lookup();
 
     let mut log = LogInfo::new("http://127.0.0.0/");
-    log.trust_roots.add_roots(&[CertificateBytes(pem_to_der(root_pem))]);
+    log.trust_roots.add_roots(&[CertificateBytes(decode_pem(root_pem))]);
 
     let chains = carver.build_chains(&cert4_fp, &issuer_lookup, &log.trust_roots);
     assert!(chains.len() == 2);
