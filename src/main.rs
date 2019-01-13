@@ -17,7 +17,7 @@ const LOG_URLS: [&str; 8] = [
 
 fn main() {
     let mut iter = args();
-    iter.next();  // skip argv[0]
+    iter.next(); // skip argv[0]
     let args = iter.map(|s| String::from(s)).collect::<Vec<String>>();
     if args.len() == 0 {
         panic!("pass at least one directory as a command line argument");

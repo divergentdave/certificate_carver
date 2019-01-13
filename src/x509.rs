@@ -448,7 +448,7 @@ fn read_tag_and_get_value<'a>(input: &mut untrusted::Reader<'a>, error: Error) -
         0x81 => {
             let second_byte = input.read_byte().map_err(|_| error)?;
             if second_byte < 128 {
-                return Err(error);  // Not the canonical encoding.
+                return Err(error); // Not the canonical encoding.
             }
             second_byte as usize
         },

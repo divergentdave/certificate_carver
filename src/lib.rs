@@ -499,7 +499,7 @@ impl Carver {
                             break;
                         },
                         Ok(Err(status)) => {
-                            all_submission_errors = false;  // don't want to panic on this
+                            all_submission_errors = false; // don't want to panic on this
 
                             print!("submission was rejected by {} with reason {}: {}, ", log.get_url(), status, fp);
                             self.map[fp].cert.format_issuer_subject(&mut stdout()).unwrap();

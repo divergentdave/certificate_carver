@@ -28,7 +28,7 @@ pub fn ldapprep_case_insensitive<'a>(s: &'a str) -> Result<Cow<'a, str>, Error> 
             stringprep::tables::private_use(c) ||
             stringprep::tables::non_character_code_point(c) ||
             stringprep::tables::surrogate_code(c) ||
-            c == '\u{FFFD}'  // "REPLACEMENT CHARACTER"
+            c == '\u{FFFD}' // "REPLACEMENT CHARACTER"
         });
     if let Some(c) = prohibited {
         return Err(Error::ProhibitedCharacter(c));
