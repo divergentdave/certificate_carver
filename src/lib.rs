@@ -5,6 +5,8 @@ extern crate openssl;
 extern crate regex;
 extern crate reqwest;
 extern crate ring;
+extern crate stringprep;
+extern crate unicode_normalization;
 extern crate untrusted;
 extern crate zip;
 extern crate walkdir;
@@ -16,6 +18,7 @@ extern crate lazy_static;
 extern crate serde_derive;
 
 pub mod x509;
+pub mod ldapprep;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter};

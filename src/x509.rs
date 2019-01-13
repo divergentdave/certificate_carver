@@ -9,6 +9,8 @@ use encoding::all::ISO_8859_1;
 
 use CertificateFingerprint;
 
+use ldapprep::ldapprep_case_insensitive;
+
 const CONSTRUCTED: u8 = 1 << 5;
 const CONTEXT_SPECIFIC: u8 = 2 << 6;
 
@@ -149,6 +151,34 @@ pub enum NameType {
     UnrecognizedType
 }
 
+pub enum MatchingRule {
+    CaseIgnoreMatch,
+    Unknown
+}
+
+impl NameType {
+    fn matching_rule(&self) -> MatchingRule {
+        // See ITU-T Rec. X.520 § 6
+        match self {
+            NameType::CountryName => MatchingRule::CaseIgnoreMatch,
+            NameType::OrganizationName => MatchingRule::CaseIgnoreMatch,
+            NameType::OrganizationalUnitName => MatchingRule::CaseIgnoreMatch,
+            NameType::DistinguishedNameQualifier => MatchingRule::CaseIgnoreMatch,
+            NameType::StateOrProvinceName => MatchingRule::CaseIgnoreMatch,
+            NameType::CommonName => MatchingRule::CaseIgnoreMatch,
+            NameType::SerialNumber => MatchingRule::CaseIgnoreMatch,
+            NameType::LocalityName => MatchingRule::CaseIgnoreMatch,
+            NameType::Title => MatchingRule::CaseIgnoreMatch,
+            NameType::Surname => MatchingRule::CaseIgnoreMatch,
+            NameType::GivenName => MatchingRule::CaseIgnoreMatch,
+            NameType::Initials => MatchingRule::CaseIgnoreMatch,
+            NameType::Pseudonym => MatchingRule::CaseIgnoreMatch,
+            NameType::GenerationQualifier => MatchingRule::CaseIgnoreMatch,
+            NameType::UnrecognizedType => MatchingRule::Unknown
+        }
+    }
+}
+
 impl From<&[u8]> for NameType {
     fn from(type_oid: &[u8]) -> NameType {
         if type_oid.len() != 3 || type_oid[0] != 0x55 || type_oid[1] != 0x04 {
@@ -177,8 +207,35 @@ impl From<&[u8]> for NameType {
 
 #[derive(Clone)]
 pub struct NameTypeValue {
+    pub bytes: Vec<u8>,
     pub name_type: NameType,
     pub value: Option<String>
+}
+
+impl PartialEq for NameTypeValue {
+    fn eq(&self, other: &NameTypeValue) -> bool {
+        if self.name_type != other.name_type {
+            return false;
+        }
+        if self.name_type == NameType::UnrecognizedType {
+            return self.bytes == other.bytes;
+        }
+        match (&self.value, &other.value) {
+            (Some(self_value), Some(other_value)) => {
+                match self.name_type.matching_rule() {
+                    MatchingRule::CaseIgnoreMatch => {
+                        match (ldapprep_case_insensitive(&self_value),
+                               ldapprep_case_insensitive(&other_value)) {
+                            (Ok(self_prepped), Ok(other_prepped)) => self_prepped == other_prepped,
+                            _ => self.bytes == other.bytes
+                        }
+                    },
+                    MatchingRule::Unknown => self.bytes == other.bytes
+                }
+            },
+            _ => self.bytes == other.bytes
+        }
+    }
 }
 
 fn parse_directory_string(raw: &Vec<u8>) -> Option<String> {
@@ -207,36 +264,70 @@ fn parse_directory_string(raw: &Vec<u8>) -> Option<String> {
 }
 
 #[derive(Clone)]
+pub struct RelativeDistinguishedName {
+    pub attribs: Vec<NameTypeValue>
+}
+
+impl PartialEq for RelativeDistinguishedName {
+    fn eq(&self, other: &RelativeDistinguishedName) -> bool {
+        if self.attribs.len() != other.attribs.len() {
+            return false;
+        }
+        for a1 in self.attribs.iter() {
+            let mut any_match = false;
+            for a2 in other.attribs.iter() {
+                if a1 == a2 {
+                    any_match = true;
+                    break
+                }
+            }
+            if !any_match {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+impl Eq for RelativeDistinguishedName {}
+
+#[derive(Clone)]
 pub struct NameInfo {
     bytes: Vec<u8>,
-    parts: Result<Vec<NameTypeValue>, Error>
+    rdns: Result<Vec<RelativeDistinguishedName>, Error>
 }
 
 impl NameInfo {
     pub fn new(bytes: Vec<u8>) -> NameInfo {
-        let parts = NameInfo::parse_rdns(&bytes);
+        let rdns = NameInfo::parse_rdns(&bytes);
         NameInfo {
             bytes: bytes,
-            parts: parts
+            rdns: rdns
         }
     }
 
-    fn parse_rdns(bytes: &Vec<u8>) -> Result<Vec<NameTypeValue>, Error> {
-        let mut results: Vec<NameTypeValue> = Vec::new();
+    fn parse_rdns(bytes: &Vec<u8>) -> Result<Vec<RelativeDistinguishedName>, Error> {
+        let mut results: Vec<RelativeDistinguishedName> = Vec::new();
         let name_der = untrusted::Input::from(bytes.as_ref());
         name_der.read_all(Error::BadDERDistinguishedNameExtraData, |name_der| {
             while !name_der.at_end() {
+                let mut attribs: Vec<NameTypeValue> = Vec::new();
                 nested(name_der, Tag::Set, Error::BadDERRelativeDistinguishedName, Error::BadDERRelativeDistinguishedNameExtraData, |rdn_der| {
                     loop {
                         nested(rdn_der, Tag::Sequence, Error::BadDERRDNAttribute, Error::BadDERRDNAttributeExtraData, |attrib_der| {
+                            let mark_type_value_1 = attrib_der.mark();
                             let attrib_type = expect_tag_and_get_value(attrib_der, Tag::OID, Error::BadDERRDNType)?;
                             let attrib_type = copy_input(&attrib_type);
-                            let mark1 = attrib_der.mark();
+                            let mark_value_1 = attrib_der.mark();
                             let (_value_tag, _value) = read_tag_and_get_value(attrib_der, Error::BadDERRDNValue)?;
-                            let mark2 = attrib_der.mark();
-                            let value_data = attrib_der.get_input_between_marks(mark1, mark2).unwrap();
+                            let mark_value_2 = attrib_der.mark();
+                            let mark_type_value_2 = attrib_der.mark();
+                            let value_data = attrib_der.get_input_between_marks(mark_value_1, mark_value_2).unwrap();
                             let value_data = copy_input(&value_data);
-                            results.push(NameTypeValue {
+                            let type_and_value_data = attrib_der.get_input_between_marks(mark_type_value_1, mark_type_value_2).unwrap();
+                            let type_and_value_data = copy_input(&type_and_value_data);
+                            attribs.push(NameTypeValue {
+                                bytes: type_and_value_data,
                                 name_type: NameType::from(attrib_type.as_ref()),
                                 value: parse_directory_string(&value_data)
                             });
@@ -248,6 +339,9 @@ impl NameInfo {
                     }
                     Ok(())
                 })?;
+                results.push(RelativeDistinguishedName {
+                    attribs
+                });
             }
             Ok(())
         })?;
@@ -256,21 +350,23 @@ impl NameInfo {
 
     pub fn format(&self, f: &mut Write) -> std::io::Result<()> {
         let mut space = false;
-        match self.parts {
-            Ok(ref parts) => {
+        match self.rdns {
+            Ok(ref rdns) => {
                 for (name_type, type_description) in NAME_ATTRIBUTES_DESCRIPTIONS.iter() {
-                    for type_value in parts.iter() {
-                        if type_value.name_type == *name_type {
-                            if space {
-                                write!(f, " {}=", type_description)?;
-                            } else {
-                                write!(f, "{}=", type_description)?;
+                    for rdn in rdns.iter() {
+                        for type_value in rdn.attribs.iter() {
+                            if type_value.name_type == *name_type {
+                                if space {
+                                    write!(f, " {}=", type_description)?;
+                                } else {
+                                    write!(f, "{}=", type_description)?;
+                                }
+                                match &type_value.value {
+                                    Some(string) => write!(f, "{}", string)?,
+                                    None => write!(f, "(unparseable value)")?
+                                }
+                                space = true;
                             }
-                            match &type_value.value {
-                                Some(string) => write!(f, "{}", string)?,
-                                None => write!(f, "(unparseable value)")?
-                            }
-                            space = true;
                         }
                     }
                 }
@@ -291,7 +387,10 @@ impl AsRef<[u8]> for NameInfo {
 
 impl PartialEq for NameInfo {
     fn eq(&self, other: &NameInfo) -> bool {
-        self.bytes == other.bytes
+        match (&self.rdns, &other.rdns) {
+            (Ok(self_rdns), Ok(other_rdns)) => self_rdns == other_rdns,
+            _ => self.bytes == other.bytes
+        }
     }
 }
 
