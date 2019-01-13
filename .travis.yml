@@ -94,6 +94,9 @@ install:
   - source ~/.cargo/env || true
   - set +e
 
+before_script:
+  - rustup component add rustfmt
+
 script:
   - set -e
   - bash ci/script.sh
