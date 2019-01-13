@@ -8,11 +8,24 @@ use utils::decode_pem;
 
 #[test]
 fn test_issued_bespoke() {
-    let root_cert = Certificate::new(decode_pem(include_bytes!("files/bespoke/rootca.crt"))).unwrap();
-    let root_to_a = Certificate::new(decode_pem(include_bytes!("files/bespoke/intermediate_a_signed_by_rootca.crt"))).unwrap();
-    let root_to_b = Certificate::new(decode_pem(include_bytes!("files/bespoke/intermediate_b_signed_by_rootca.crt"))).unwrap();
-    let a_to_b = Certificate::new(decode_pem(include_bytes!("files/bespoke/intermediate_a/intermediate_b_signed_by_intermediate_a.crt"))).unwrap();
-    let b_to_a = Certificate::new(decode_pem(include_bytes!("files/bespoke/intermediate_b/intermediate_a_signed_by_intermediate_b.crt"))).unwrap();
+    let root_cert =
+        Certificate::new(decode_pem(include_bytes!("files/bespoke/rootca.crt"))).unwrap();
+    let root_to_a = Certificate::new(decode_pem(include_bytes!(
+        "files/bespoke/intermediate_a_signed_by_rootca.crt"
+    )))
+    .unwrap();
+    let root_to_b = Certificate::new(decode_pem(include_bytes!(
+        "files/bespoke/intermediate_b_signed_by_rootca.crt"
+    )))
+    .unwrap();
+    let a_to_b = Certificate::new(decode_pem(include_bytes!(
+        "files/bespoke/intermediate_a/intermediate_b_signed_by_intermediate_a.crt"
+    )))
+    .unwrap();
+    let b_to_a = Certificate::new(decode_pem(include_bytes!(
+        "files/bespoke/intermediate_b/intermediate_a_signed_by_intermediate_b.crt"
+    )))
+    .unwrap();
 
     assert!(root_cert.issued(&root_cert));
     assert!(root_cert.issued(&root_to_a));
@@ -47,8 +60,14 @@ fn test_issued_bespoke() {
 
 #[test]
 fn test_issued_ignore_case() {
-    let cert1 = Certificate::new(decode_pem(include_bytes!("files/collected/test_end_entity.pem"))).unwrap();
-    let cert2 = Certificate::new(decode_pem(include_bytes!("files/collected/issued_by_ee.pem"))).unwrap();
+    let cert1 = Certificate::new(decode_pem(include_bytes!(
+        "files/collected/test_end_entity.pem"
+    )))
+    .unwrap();
+    let cert2 = Certificate::new(decode_pem(include_bytes!(
+        "files/collected/issued_by_ee.pem"
+    )))
+    .unwrap();
 
     assert!(cert1.issued(&cert2));
 }

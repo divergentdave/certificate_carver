@@ -22,7 +22,10 @@ fn main() {
     if args.len() == 0 {
         panic!("pass at least one directory as a command line argument");
     }
-    let logs = LOG_URLS.iter().map(|s| String::from(*s)).collect::<Vec<String>>();
+    let logs = LOG_URLS
+        .iter()
+        .map(|s| String::from(*s))
+        .collect::<Vec<String>>();
     let mut carver = Carver::new(logs);
     let crtsh = RealCrtShServer();
     let log_comms = RealLogServers();

@@ -7,8 +7,8 @@ extern crate sha2;
 extern crate stringprep;
 extern crate unicode_normalization;
 extern crate untrusted;
-extern crate zip;
 extern crate walkdir;
+extern crate zip;
 
 #[macro_use]
 extern crate lazy_static;
@@ -16,18 +16,18 @@ extern crate lazy_static;
 #[macro_use]
 extern crate serde_derive;
 
-pub mod x509;
 pub mod ldapprep;
+pub mod x509;
 
+use regex::bytes::Regex;
+use reqwest::Url;
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom, stdout};
+use std::io::{stdout, Read, Seek, SeekFrom};
 use std::path::Path;
 use std::str;
-use regex::bytes::Regex;
-use reqwest::Url;
-use sha2::{Sha256, Digest};
 use walkdir::WalkDir;
 use zip::read::ZipArchive;
 
@@ -36,7 +36,12 @@ use x509::Certificate;
 const ZIP_MAGIC: [u8; 4] = [0x50, 0x4b, 3, 4];
 
 fn pem_base64_config() -> base64::Config {
-    base64::Config::new(base64::CharacterSet::Standard, true, true, base64::LineWrap::Wrap(64, base64::LineEnding::CRLF))
+    base64::Config::new(
+        base64::CharacterSet::Standard,
+        true,
+        true,
+        base64::LineWrap::Wrap(64, base64::LineEnding::CRLF),
+    )
 }
 
 fn pem_base64_encode(input: &[u8]) -> String {
@@ -68,9 +73,7 @@ pub struct AddChainResponse {
 
 // should make separate types for fingerprints and cert der instead of using Vec<u8>
 #[derive(Hash, PartialOrd, Ord, PartialEq, Eq, Clone, Copy)]
-pub struct CertificateFingerprint (
-    pub [u8; 32]
-);
+pub struct CertificateFingerprint(pub [u8; 32]);
 
 impl AsRef<[u8]> for CertificateFingerprint {
     fn as_ref(&self) -> &[u8] {
@@ -91,9 +94,7 @@ impl Debug for CertificateFingerprint {
 }
 
 #[derive(Clone)]
-pub struct CertificateBytes (
-    pub Vec<u8>
-);
+pub struct CertificateBytes(pub Vec<u8>);
 
 impl CertificateBytes {
     pub fn fingerprint(&self) -> CertificateFingerprint {
@@ -111,9 +112,7 @@ impl AsRef<[u8]> for CertificateBytes {
     }
 }
 
-pub struct CertificateChain (
-    pub Vec<CertificateBytes>
-);
+pub struct CertificateChain(pub Vec<CertificateBytes>);
 
 pub struct CertificateRecord {
     pub paths: Vec<String>,
@@ -146,7 +145,10 @@ impl LogInfo {
         }
     }
 
-    pub fn fetch_roots(&self, log_comms: &LogServers) -> Result<Vec<CertificateBytes>, Box<std::error::Error>> {
+    pub fn fetch_roots(
+        &self,
+        log_comms: &LogServers,
+    ) -> Result<Vec<CertificateBytes>, Box<std::error::Error>> {
         let body = log_comms.fetch_roots_resp(self)?;
         let mut vec = Vec::new();
         for encoded in body.certificates {
@@ -156,17 +158,20 @@ impl LogInfo {
         Ok(vec)
     }
 
-    fn submit_chain(&self, chain: &CertificateChain) -> Result<Result<AddChainResponse, reqwest::StatusCode>, Box<std::error::Error>> {
+    fn submit_chain(
+        &self,
+        chain: &CertificateChain,
+    ) -> Result<Result<AddChainResponse, reqwest::StatusCode>, Box<std::error::Error>> {
         // TODO: which order? should have leaf first, i think we're okay
         let url = self.url.join("ct/v1/add-chain").unwrap();
-        let encoded = chain.0.iter().map(|c| pem_base64_encode(c.as_ref())).collect();
-        let request_body = AddChainRequest{
-            chain: encoded,
-        };
+        let encoded = chain
+            .0
+            .iter()
+            .map(|c| pem_base64_encode(c.as_ref()))
+            .collect();
+        let request_body = AddChainRequest { chain: encoded };
         let client = reqwest::Client::new();
-        let mut response = client.post(url)
-            .json(&request_body)
-            .send()?;
+        let mut response = client.post(url).json(&request_body).send()?;
         if !response.status().is_success() {
             return Ok(Err(response.status()));
         }
@@ -181,7 +186,11 @@ impl LogInfo {
 
 pub trait LogServers {
     fn fetch_roots_resp(&self, log: &LogInfo) -> Result<GetRootsResponse, Box<std::error::Error>>;
-    fn submit_chain(&self, log: &LogInfo, chain: &CertificateChain) -> Result<Result<AddChainResponse, reqwest::StatusCode>, Box<std::error::Error>>;
+    fn submit_chain(
+        &self,
+        log: &LogInfo,
+        chain: &CertificateChain,
+    ) -> Result<Result<AddChainResponse, reqwest::StatusCode>, Box<std::error::Error>>;
 }
 
 pub struct RealLogServers();
@@ -190,10 +199,15 @@ impl LogServers for RealLogServers {
     fn fetch_roots_resp(&self, log: &LogInfo) -> Result<GetRootsResponse, Box<std::error::Error>> {
         let url = log.get_url().join("ct/v1/get-roots")?;
         let mut resp = reqwest::get(url)?;
-        resp.json().map_err(|e: reqwest::Error| -> Box<std::error::Error> { Box::new(e) })
+        resp.json()
+            .map_err(|e: reqwest::Error| -> Box<std::error::Error> { Box::new(e) })
     }
 
-    fn submit_chain(&self, log: &LogInfo, chain: &CertificateChain) -> Result<Result<AddChainResponse, reqwest::StatusCode>, Box<std::error::Error>> {
+    fn submit_chain(
+        &self,
+        log: &LogInfo,
+        chain: &CertificateChain,
+    ) -> Result<Result<AddChainResponse, reqwest::StatusCode>, Box<std::error::Error>> {
         log.submit_chain(chain)
     }
 }
@@ -292,11 +306,11 @@ impl Carver {
         let mut magic: [u8; 4] = [0; 4];
         match file.read(&mut magic) {
             Ok(_) => (),
-            Err(_) => return results
+            Err(_) => return results,
         }
         match file.seek(SeekFrom::Start(0)) {
             Ok(_) => (),
-            Err(_) => return results
+            Err(_) => return results,
         }
         if magic == ZIP_MAGIC {
             if let Ok(mut archive) = ZipArchive::new(&mut file) {
@@ -308,7 +322,7 @@ impl Carver {
             }
             match file.seek(SeekFrom::Start(0)) {
                 Ok(_) => (),
-                Err(_) => return results
+                Err(_) => return results,
             }
         }
         results.append(&mut self.carve_stream(&mut file));
@@ -343,9 +357,12 @@ impl Carver {
         }
     }
 
-    pub fn build_issuer_lookup(&self) -> HashMap<CertificateFingerprint, Vec<CertificateFingerprint>> {
+    pub fn build_issuer_lookup(
+        &self,
+    ) -> HashMap<CertificateFingerprint, Vec<CertificateFingerprint>> {
         // TODO: could use a hashmap over name der bytes to avoid calling issued() O(n^2) times
-        let mut lookup: HashMap<CertificateFingerprint, Vec<CertificateFingerprint>> = HashMap::new();
+        let mut lookup: HashMap<CertificateFingerprint, Vec<CertificateFingerprint>> =
+            HashMap::new();
         for (issuer_fp, issuer_info) in self.map.iter() {
             let issuer = &issuer_info.cert;
             for (subject_fp, subject_info) in self.map.iter() {
@@ -362,14 +379,18 @@ impl Carver {
         lookup
     }
 
-    pub fn build_chains(&self,
-                        leaf_fp: &CertificateFingerprint,
-                        issuer_lookup: &HashMap<CertificateFingerprint, Vec<CertificateFingerprint>>,
-                        trust_roots: &TrustRoots) -> Vec<CertificateChain> {
-        fn recurse<'a>(fp: &'a CertificateFingerprint,
-                           history: Vec<CertificateFingerprint>,
-                           issuer_lookup: &'a HashMap<CertificateFingerprint, Vec<CertificateFingerprint>>,
-                           trust_roots: &TrustRoots) -> Vec<Vec<CertificateFingerprint>> {
+    pub fn build_chains(
+        &self,
+        leaf_fp: &CertificateFingerprint,
+        issuer_lookup: &HashMap<CertificateFingerprint, Vec<CertificateFingerprint>>,
+        trust_roots: &TrustRoots,
+    ) -> Vec<CertificateChain> {
+        fn recurse<'a>(
+            fp: &'a CertificateFingerprint,
+            history: Vec<CertificateFingerprint>,
+            issuer_lookup: &'a HashMap<CertificateFingerprint, Vec<CertificateFingerprint>>,
+            trust_roots: &TrustRoots,
+        ) -> Vec<Vec<CertificateFingerprint>> {
             if let Some(issuer_fps) = issuer_lookup.get(fp) {
                 let mut partial_chains: Vec<Vec<CertificateFingerprint>> = Vec::new();
                 for issuer_fp in issuer_fps.iter() {
@@ -390,11 +411,11 @@ impl Carver {
                             partial_chains.push(new);
                             break;
                             // only want this chain once, even if we have multiple equivalent roots
-                        },
+                        }
                         Err(_) => {
                             let mut result = recurse(issuer_fp, new, issuer_lookup, trust_roots);
                             partial_chains.append(&mut result);
-                        },
+                        }
                     }
                 }
                 partial_chains
@@ -403,11 +424,12 @@ impl Carver {
             }
         }
         let fp_chains = recurse(leaf_fp, Vec::new(), issuer_lookup, trust_roots);
-        fp_chains.iter().map(
-            |fp_chain| CertificateChain(fp_chain.iter().map(
-                |fp| self.map[fp].der.clone()
-            ).collect())
-        ).collect()
+        fp_chains
+            .iter()
+            .map(|fp_chain| {
+                CertificateChain(fp_chain.iter().map(|fp| self.map[fp].der.clone()).collect())
+            })
+            .collect()
     }
 
     pub fn run(&mut self, args: Vec<String>, crtsh: &CrtShServer, log_comms: &LogServers) {
@@ -427,10 +449,10 @@ impl Carver {
                     all_roots.add_roots(&log.roots);
                     log.trust_roots.add_roots(&log.roots);
                     logs.push(log);
-                },
+                }
                 Err(e) => {
                     println!("Warning: couldn't connect to {}, {:?}", log_url, e);
-                },
+                }
             }
         }
 
@@ -448,7 +470,12 @@ impl Carver {
             let found = crtsh.check_crtsh(fp).unwrap();
             &info.cert.format_issuer_subject(&mut stdout()).unwrap();
             println!();
-            println!("{}, crtsh seen = {}, {} file paths", fp, found, info.paths.len());
+            println!(
+                "{}, crtsh seen = {}, {} file paths",
+                fp,
+                found,
+                info.paths.len()
+            );
             for path in info.paths.iter() {
                 println!("{}", path);
             }
@@ -458,15 +485,17 @@ impl Carver {
                     total_found += 1;
                 } else {
                     total_not_found += 1;
-                     new_fps.push(fp.clone());
+                    new_fps.push(fp.clone());
                 }
             } else {
                 count_no_chain += 1;
             }
         }
         let total = total_found + total_not_found;
-        println!("{}/{} in crt.sh already, {}/{} not yet in crt.sh ({} did not chain to roots)",
-                 total_found, total, total_not_found, total, count_no_chain);
+        println!(
+            "{}/{} in crt.sh already, {}/{} not yet in crt.sh ({} did not chain to roots)",
+            total_found, total, total_not_found, total, count_no_chain
+        );
         println!();
 
         let mut new_submission_count = 0;
@@ -492,24 +521,35 @@ impl Carver {
                             all_submission_errors = false;
 
                             print!("submitted to {}: {}, ", log.get_url(), fp);
-                            self.map[fp].cert.format_issuer_subject(&mut stdout()).unwrap();
+                            self.map[fp]
+                                .cert
+                                .format_issuer_subject(&mut stdout())
+                                .unwrap();
                             println!();
                             println!();
                             // only submit one chain
                             break;
-                        },
+                        }
                         Ok(Err(status)) => {
                             all_submission_errors = false; // don't want to panic on this
 
-                            print!("submission was rejected by {} with reason {}: {}, ", log.get_url(), status, fp);
-                            self.map[fp].cert.format_issuer_subject(&mut stdout()).unwrap();
+                            print!(
+                                "submission was rejected by {} with reason {}: {}, ",
+                                log.get_url(),
+                                status,
+                                fp
+                            );
+                            self.map[fp]
+                                .cert
+                                .format_issuer_subject(&mut stdout())
+                                .unwrap();
                             println!();
                             println!();
-                        },
+                        }
                         Err(e) => {
                             println!("submission error: {} {:?}", e, e);
                             last_submission_error = Some(e);
-                        },
+                        }
                     }
                 }
             }
@@ -519,7 +559,11 @@ impl Carver {
                 panic!(error_desc);
             }
         }
-        println!("Successfully submitted {}/{} new certificates", new_submission_count, new_fps.len());
+        println!(
+            "Successfully submitted {}/{} new certificates",
+            new_submission_count,
+            new_fps.len()
+        );
     }
 }
 

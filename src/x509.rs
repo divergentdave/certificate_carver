@@ -2,9 +2,9 @@ use untrusted;
 
 use std::io::Write;
 
-use encoding::{Encoding, DecoderTrap};
 use encoding::all::ISO_8859_1;
-use sha2::{Sha256, Digest};
+use encoding::{DecoderTrap, Encoding};
+use sha2::{Digest, Sha256};
 
 use CertificateFingerprint;
 
@@ -26,10 +26,9 @@ enum Tag {
     PrintableString = 0x13,
     TeletexString = 0x14,
     Sequence = CONSTRUCTED | 0x10, // 0x30
-    Set = CONSTRUCTED | 0x11, // 0x31
+    Set = CONSTRUCTED | 0x11,      // 0x31
     // UTCTime = 0x17,
     // GeneralizedTime = 0x18,
-
     ContextSpecificConstructed0 = CONTEXT_SPECIFIC | CONSTRUCTED | 0,
     // ContextSpecificConstructed1 = CONTEXT_SPECIFIC | CONSTRUCTED | 1,
     ContextSpecificConstructed3 = CONTEXT_SPECIFIC | CONSTRUCTED | 3,
@@ -39,7 +38,10 @@ const NAME_ATTRIBUTES_DESCRIPTIONS: [(NameType, &str); 14] = [
     (NameType::CountryName, "C"),
     (NameType::OrganizationName, "O"),
     (NameType::OrganizationalUnitName, "OU"),
-    (NameType::DistinguishedNameQualifier, "Distinguished Name Qualifier"),
+    (
+        NameType::DistinguishedNameQualifier,
+        "Distinguished Name Qualifier",
+    ),
     (NameType::StateOrProvinceName, "ST"),
     (NameType::CommonName, "CN"),
     (NameType::SerialNumber, "SN"),
@@ -49,32 +51,44 @@ const NAME_ATTRIBUTES_DESCRIPTIONS: [(NameType, &str); 14] = [
     (NameType::GivenName, "G"),
     (NameType::Initials, "I"),
     (NameType::Pseudonym, "Pseudonym"),
-    (NameType::GenerationQualifier, "Generation Qualifier")
+    (NameType::GenerationQualifier, "Generation Qualifier"),
 ];
 
 #[derive(Clone)]
 pub struct Certificate {
     bytes: Vec<u8>,
     issuer: NameInfo,
-    subject: NameInfo
+    subject: NameInfo,
 }
 
 impl Certificate {
     pub fn new(bytes: Vec<u8>) -> Result<Certificate, Error> {
         let (issuer, subject) = Certificate::parse_cert_names(bytes.as_ref())?;
-        Ok(Certificate { bytes, issuer, subject })
+        Ok(Certificate {
+            bytes,
+            issuer,
+            subject,
+        })
     }
 
     fn parse_cert_names(bytes: &[u8]) -> Result<(NameInfo, NameInfo), Error> {
         let cert_der = untrusted::Input::from(bytes);
         let tbs_der = cert_der.read_all(Error::BadDERCertificateExtraData, |cert_der| {
-            nested(cert_der, Tag::Sequence, Error::BadDERCertificate, Error::BadDERCertificateExtraData, parse_signed_data)
+            nested(
+                cert_der,
+                Tag::Sequence,
+                Error::BadDERCertificate,
+                Error::BadDERCertificateExtraData,
+                parse_signed_data,
+            )
         })?;
         let (issuer, subject) = tbs_der.read_all(Error::BadDERCertificate, |tbs_der| {
-            let (first_tag, _first_value) = read_tag_and_get_value(tbs_der, Error::BadDERSerialNumber)?;
+            let (first_tag, _first_value) =
+                read_tag_and_get_value(tbs_der, Error::BadDERSerialNumber)?;
             let next_tag = if (first_tag as usize) == (Tag::ContextSpecificConstructed0 as usize) {
                 // skip version number, if present
-                let (next_tag, _next_value) = read_tag_and_get_value(tbs_der, Error::BadDERSerialNumber)?;
+                let (next_tag, _next_value) =
+                    read_tag_and_get_value(tbs_der, Error::BadDERSerialNumber)?;
                 next_tag
             } else {
                 first_tag
@@ -98,7 +112,11 @@ impl Certificate {
             skip(tbs_der, Tag::Sequence, Error::BadDERSPKI)?;
 
             if !tbs_der.at_end() {
-                skip(tbs_der, Tag::ContextSpecificConstructed3, Error::BadDERExtensions)?;
+                skip(
+                    tbs_der,
+                    Tag::ContextSpecificConstructed3,
+                    Error::BadDERExtensions,
+                )?;
             }
 
             Ok((issuer, subject))
@@ -148,12 +166,12 @@ pub enum NameType {
     Initials,
     Pseudonym,
     GenerationQualifier,
-    UnrecognizedType
+    UnrecognizedType,
 }
 
 pub enum MatchingRule {
     CaseIgnoreMatch,
-    Unknown
+    Unknown,
 }
 
 impl NameType {
@@ -174,7 +192,7 @@ impl NameType {
             NameType::Initials => MatchingRule::CaseIgnoreMatch,
             NameType::Pseudonym => MatchingRule::CaseIgnoreMatch,
             NameType::GenerationQualifier => MatchingRule::CaseIgnoreMatch,
-            NameType::UnrecognizedType => MatchingRule::Unknown
+            NameType::UnrecognizedType => MatchingRule::Unknown,
         }
     }
 }
@@ -199,7 +217,7 @@ impl From<&[u8]> for NameType {
                 0x2B => NameType::Initials,
                 0x41 => NameType::Pseudonym,
                 0x2C => NameType::GenerationQualifier,
-                _ => NameType::UnrecognizedType
+                _ => NameType::UnrecognizedType,
             }
         }
     }
@@ -209,7 +227,7 @@ impl From<&[u8]> for NameType {
 pub struct NameTypeValue {
     pub bytes: Vec<u8>,
     pub name_type: NameType,
-    pub value: Option<String>
+    pub value: Option<String>,
 }
 
 impl PartialEq for NameTypeValue {
@@ -221,19 +239,19 @@ impl PartialEq for NameTypeValue {
             return self.bytes == other.bytes;
         }
         match (&self.value, &other.value) {
-            (Some(self_value), Some(other_value)) => {
-                match self.name_type.matching_rule() {
-                    MatchingRule::CaseIgnoreMatch => {
-                        match (ldapprep_case_insensitive(&self_value),
-                               ldapprep_case_insensitive(&other_value)) {
-                            (Ok(self_prepped), Ok(other_prepped)) => self_prepped == other_prepped,
-                            _ => self.bytes == other.bytes
-                        }
-                    },
-                    MatchingRule::Unknown => self.bytes == other.bytes
+            (Some(self_value), Some(other_value)) => match self.name_type.matching_rule() {
+                MatchingRule::CaseIgnoreMatch => {
+                    match (
+                        ldapprep_case_insensitive(&self_value),
+                        ldapprep_case_insensitive(&other_value),
+                    ) {
+                        (Ok(self_prepped), Ok(other_prepped)) => self_prepped == other_prepped,
+                        _ => self.bytes == other.bytes,
+                    }
                 }
+                MatchingRule::Unknown => self.bytes == other.bytes,
             },
-            _ => self.bytes == other.bytes
+            _ => self.bytes == other.bytes,
         }
     }
 }
@@ -253,10 +271,10 @@ fn parse_directory_string(raw: &Vec<u8>) -> Option<String> {
             let mut decoded = String::new();
             match ISO_8859_1.decode_to(slice, DecoderTrap::Replace, &mut decoded) {
                 Ok(()) => Some(decoded),
-                Err(_) => None
+                Err(_) => None,
             }
         } else {
-            return None
+            return None;
         }
     } else {
         None
@@ -265,7 +283,7 @@ fn parse_directory_string(raw: &Vec<u8>) -> Option<String> {
 
 #[derive(Clone)]
 pub struct RelativeDistinguishedName {
-    pub attribs: Vec<NameTypeValue>
+    pub attribs: Vec<NameTypeValue>,
 }
 
 impl PartialEq for RelativeDistinguishedName {
@@ -278,7 +296,7 @@ impl PartialEq for RelativeDistinguishedName {
             for a2 in other.attribs.iter() {
                 if a1 == a2 {
                     any_match = true;
-                    break
+                    break;
                 }
             }
             if !any_match {
@@ -294,7 +312,7 @@ impl Eq for RelativeDistinguishedName {}
 #[derive(Clone)]
 pub struct NameInfo {
     bytes: Vec<u8>,
-    rdns: Result<Vec<RelativeDistinguishedName>, Error>
+    rdns: Result<Vec<RelativeDistinguishedName>, Error>,
 }
 
 impl NameInfo {
@@ -302,7 +320,7 @@ impl NameInfo {
         let rdns = NameInfo::parse_rdns(&bytes);
         NameInfo {
             bytes: bytes,
-            rdns: rdns
+            rdns: rdns,
         }
     }
 
@@ -312,36 +330,58 @@ impl NameInfo {
         name_der.read_all(Error::BadDERDistinguishedNameExtraData, |name_der| {
             while !name_der.at_end() {
                 let mut attribs: Vec<NameTypeValue> = Vec::new();
-                nested(name_der, Tag::Set, Error::BadDERRelativeDistinguishedName, Error::BadDERRelativeDistinguishedNameExtraData, |rdn_der| {
-                    loop {
-                        nested(rdn_der, Tag::Sequence, Error::BadDERRDNAttribute, Error::BadDERRDNAttributeExtraData, |attrib_der| {
-                            let mark_type_value_1 = attrib_der.mark();
-                            let attrib_type = expect_tag_and_get_value(attrib_der, Tag::OID, Error::BadDERRDNType)?;
-                            let attrib_type = copy_input(&attrib_type);
-                            let mark_value_1 = attrib_der.mark();
-                            let (_value_tag, _value) = read_tag_and_get_value(attrib_der, Error::BadDERRDNValue)?;
-                            let mark_value_2 = attrib_der.mark();
-                            let mark_type_value_2 = attrib_der.mark();
-                            let value_data = attrib_der.get_input_between_marks(mark_value_1, mark_value_2).unwrap();
-                            let value_data = copy_input(&value_data);
-                            let type_and_value_data = attrib_der.get_input_between_marks(mark_type_value_1, mark_type_value_2).unwrap();
-                            let type_and_value_data = copy_input(&type_and_value_data);
-                            attribs.push(NameTypeValue {
-                                bytes: type_and_value_data,
-                                name_type: NameType::from(attrib_type.as_ref()),
-                                value: parse_directory_string(&value_data)
-                            });
-                            Ok(())
-                        })?;
-                        if rdn_der.at_end() {
-                            break;
+                nested(
+                    name_der,
+                    Tag::Set,
+                    Error::BadDERRelativeDistinguishedName,
+                    Error::BadDERRelativeDistinguishedNameExtraData,
+                    |rdn_der| {
+                        loop {
+                            nested(
+                                rdn_der,
+                                Tag::Sequence,
+                                Error::BadDERRDNAttribute,
+                                Error::BadDERRDNAttributeExtraData,
+                                |attrib_der| {
+                                    let mark_type_value_1 = attrib_der.mark();
+                                    let attrib_type = expect_tag_and_get_value(
+                                        attrib_der,
+                                        Tag::OID,
+                                        Error::BadDERRDNType,
+                                    )?;
+                                    let attrib_type = copy_input(&attrib_type);
+                                    let mark_value_1 = attrib_der.mark();
+                                    let (_value_tag, _value) =
+                                        read_tag_and_get_value(attrib_der, Error::BadDERRDNValue)?;
+                                    let mark_value_2 = attrib_der.mark();
+                                    let mark_type_value_2 = attrib_der.mark();
+                                    let value_data = attrib_der
+                                        .get_input_between_marks(mark_value_1, mark_value_2)
+                                        .unwrap();
+                                    let value_data = copy_input(&value_data);
+                                    let type_and_value_data = attrib_der
+                                        .get_input_between_marks(
+                                            mark_type_value_1,
+                                            mark_type_value_2,
+                                        )
+                                        .unwrap();
+                                    let type_and_value_data = copy_input(&type_and_value_data);
+                                    attribs.push(NameTypeValue {
+                                        bytes: type_and_value_data,
+                                        name_type: NameType::from(attrib_type.as_ref()),
+                                        value: parse_directory_string(&value_data),
+                                    });
+                                    Ok(())
+                                },
+                            )?;
+                            if rdn_der.at_end() {
+                                break;
+                            }
                         }
-                    }
-                    Ok(())
-                })?;
-                results.push(RelativeDistinguishedName {
-                    attribs
-                });
+                        Ok(())
+                    },
+                )?;
+                results.push(RelativeDistinguishedName { attribs });
             }
             Ok(())
         })?;
@@ -363,14 +403,14 @@ impl NameInfo {
                                 }
                                 match &type_value.value {
                                     Some(string) => write!(f, "{}", string)?,
-                                    None => write!(f, "(unparseable value)")?
+                                    None => write!(f, "(unparseable value)")?,
                                 }
                                 space = true;
                             }
                         }
                     }
                 }
-            },
+            }
             Err(_) => {
                 write!(f, "(unparseable name)")?;
             }
@@ -389,7 +429,7 @@ impl PartialEq for NameInfo {
     fn eq(&self, other: &NameInfo) -> bool {
         match (&self.rdns, &other.rdns) {
             (Ok(self_rdns), Ok(other_rdns)) => self_rdns == other_rdns,
-            _ => self.bytes == other.bytes
+            _ => self.bytes == other.bytes,
         }
     }
 }
@@ -421,11 +461,15 @@ pub enum Error {
     BadDERString,
     BadDERRDNValue,
     BadDERAlgorithm,
-    BadDERSignature2
+    BadDERSignature2,
 }
 
 #[inline(always)]
-fn expect_tag_and_get_value<'a>(input: &mut untrusted::Reader<'a>, tag: Tag, error: Error) -> Result<untrusted::Input<'a>, Error> {
+fn expect_tag_and_get_value<'a>(
+    input: &mut untrusted::Reader<'a>,
+    tag: Tag,
+    error: Error,
+) -> Result<untrusted::Input<'a>, Error> {
     let (actual_tag, inner) = read_tag_and_get_value(input, error)?;
     if (tag as usize) != (actual_tag as usize) {
         return Err(error);
@@ -433,7 +477,10 @@ fn expect_tag_and_get_value<'a>(input: &mut untrusted::Reader<'a>, tag: Tag, err
     Ok(inner)
 }
 
-fn read_tag_and_get_value<'a>(input: &mut untrusted::Reader<'a>, error: Error) -> Result<(u8, untrusted::Input<'a>), Error> {
+fn read_tag_and_get_value<'a>(
+    input: &mut untrusted::Reader<'a>,
+    error: Error,
+) -> Result<(u8, untrusted::Input<'a>), Error> {
     // based on ring::io::der::read_tag_and_get_value
     let tag = input.read_byte().map_err(|_| error)?;
     if (tag & 0x1F) == 0x1F {
@@ -451,7 +498,7 @@ fn read_tag_and_get_value<'a>(input: &mut untrusted::Reader<'a>, error: Error) -
                 return Err(error); // Not the canonical encoding.
             }
             second_byte as usize
-        },
+        }
         0x82 => {
             let second_byte = input.read_byte().map_err(|_| error)? as usize;
             let third_byte = input.read_byte().map_err(|_| error)? as usize;
@@ -460,10 +507,10 @@ fn read_tag_and_get_value<'a>(input: &mut untrusted::Reader<'a>, error: Error) -
                 return Err(error); // Not the canonical encoding.
             }
             combined
-        },
+        }
         _ => {
             return Err(error); // We don't support longer lengths.
-        },
+        }
     };
 
     let inner = input.skip_and_get_input(length).map_err(|_| error)?;
@@ -474,7 +521,16 @@ fn skip(input: &mut untrusted::Reader, tag: Tag, error: Error) -> Result<(), Err
     expect_tag_and_get_value(input, tag, error).map(|_| ())
 }
 
-fn nested<'a, F, R>(input: &mut untrusted::Reader<'a>, tag: Tag, error_wrong_tag: Error, error_incomplete_read: Error, decoder: F) -> Result<R, Error> where F : FnOnce(&mut untrusted::Reader<'a>) -> Result<R, Error> {
+fn nested<'a, F, R>(
+    input: &mut untrusted::Reader<'a>,
+    tag: Tag,
+    error_wrong_tag: Error,
+    error_incomplete_read: Error,
+    decoder: F,
+) -> Result<R, Error>
+where
+    F: FnOnce(&mut untrusted::Reader<'a>) -> Result<R, Error>,
+{
     let inner = expect_tag_and_get_value(input, tag, error_wrong_tag)?;
     inner.read_all(error_incomplete_read, decoder)
 }
@@ -494,7 +550,10 @@ fn parse_signed_data<'a>(der: &mut untrusted::Reader<'a>) -> Result<untrusted::I
     Ok(tbs)
 }
 
-fn bit_string_with_no_unused_bits<'a>(input: &mut untrusted::Reader<'a>, error: Error) -> Result<untrusted::Input<'a>, Error> {
+fn bit_string_with_no_unused_bits<'a>(
+    input: &mut untrusted::Reader<'a>,
+    error: Error,
+) -> Result<untrusted::Input<'a>, Error> {
     nested(input, Tag::BitString, error, error, |value| {
         let unused_bits_at_end = value.read_byte().map_err(|_| error)?;
         if unused_bits_at_end != 0 {

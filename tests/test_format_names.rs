@@ -47,6 +47,6 @@ fn test_format_names_verisign_printablestring() {
 fn test_format_names_emptyissuername() {
     test_format_names_helper(
         include_bytes!("files/collected/emptyIssuerName.pem"),
-        "issuer=, subject=CN=End entity signed by empty name CA"
+        "issuer=, subject=CN=End entity signed by empty name CA",
     )
 }
