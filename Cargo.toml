@@ -9,7 +9,6 @@ encoding = "0.2"
 hex = "0.3"
 lazy_static = "1.0"
 regex = "0.2"
-reqwest = "0.8"
 ring = "0.14.0"
 serde = "1.0"
 serde_derive = "1.0"
@@ -19,3 +18,8 @@ unicode-normalization = "0.1"
 untrusted = "0.6.2"  # Must match the version used by ring
 walkdir = "2"
 zip = "0.3"
+
+[dependencies.reqwest]
+version = "0.9"
+default-features = false
+features = ["default-tls-vendored"]
