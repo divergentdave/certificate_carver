@@ -23,6 +23,8 @@ fn main() {
         panic!("pass at least one directory as a command line argument");
     }
     let logs = LOG_URLS.iter().map(|s| String::from(*s)).collect::<Vec<String>>();
-    let mut carver = Carver::new(logs, Box::new(RealCrtShServer()), Box::new(RealLogServers()));
-    carver.run(args);
+    let mut carver = Carver::new(logs);
+    let crtsh = RealCrtShServer();
+    let log_comms = RealLogServers();
+    carver.run(args, &crtsh, &log_comms);
 }

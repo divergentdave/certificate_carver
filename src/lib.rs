@@ -227,17 +227,13 @@ impl TrustRoots {
 pub struct Carver {
     pub log_urls: Vec<String>,
     pub map: HashMap<CertificateFingerprint, CertificateRecord>,
-    pub crtsh: Box<CrtShServer>,
-    pub log_comms: Box<LogServers>
 }
 
 impl Carver {
-    pub fn new(log_urls: Vec<String>, crtsh: Box<CrtShServer>, log_comms: Box<LogServers>) -> Carver {
+    pub fn new(log_urls: Vec<String>) -> Carver {
         Carver {
             log_urls,
             map: HashMap::new(),
-            crtsh,
-            log_comms
         }
     }
 
@@ -413,7 +409,7 @@ impl Carver {
         ).collect()
     }
 
-    pub fn run(&mut self, args: Vec<String>) {
+    pub fn run(&mut self, args: Vec<String>, crtsh: &CrtShServer, log_comms: &LogServers) {
         for arg in args.iter() {
             self.scan_directory_or_file(&arg);
         }
@@ -421,7 +417,7 @@ impl Carver {
         let mut all_roots = TrustRoots::new();
         for log_url in self.log_urls.clone().iter() {
             let mut log = LogInfo::new(log_url);
-            match log.fetch_roots(self.log_comms.as_ref()) {
+            match log.fetch_roots(log_comms) {
                 Ok(roots) => {
                     log.roots = roots;
                     for root_der in &log.roots[..] {
@@ -448,7 +444,7 @@ impl Carver {
                 // skip root CAs
                 continue;
             }
-            let found = self.crtsh.check_crtsh(fp).unwrap();
+            let found = crtsh.check_crtsh(fp).unwrap();
             &info.cert.format_issuer_subject(&mut stdout()).unwrap();
             println!();
             println!("{}, crtsh seen = {}, {} file paths", fp, found, info.paths.len());
@@ -486,7 +482,7 @@ impl Carver {
                 let chains = self.build_chains(fp, &issuer_lookup, &log.trust_roots);
                 for chain in chains.iter() {
                     any_chain = true;
-                    match self.log_comms.submit_chain(&log, &chain) {
+                    match log_comms.submit_chain(&log, &chain) {
                         Ok(Ok(_)) => {
                             if !any_submission_success {
                                 new_submission_count += 1;

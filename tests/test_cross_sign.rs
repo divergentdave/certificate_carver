@@ -1,7 +1,5 @@
 extern crate certificate_carver;
 
-mod mock_crtsh;
-mod mock_log;
 mod utils;
 
 use std::io::Cursor;
@@ -9,8 +7,6 @@ use std::io::Cursor;
 use certificate_carver::{Carver, CertificateBytes, LogInfo};
 use certificate_carver::x509::Certificate;
 
-use mock_crtsh::MockCrtShServer;
-use mock_log::MockLogServers;
 use utils::decode_pem;
 
 #[test]
@@ -23,7 +19,7 @@ fn test_fixture_bespoke_certs() {
 
 #[test]
 fn test_cross_signatures() {
-    let mut carver = Carver::new(Vec::new(), Box::new(MockCrtShServer()), Box::new(MockLogServers()));
+    let mut carver = Carver::new(Vec::new());
     let root_pem = include_bytes!("files/bespoke/rootca.crt");
     let cert1_pem = include_bytes!("files/bespoke/intermediate_a_signed_by_rootca.crt");
     let cert2_pem = include_bytes!("files/bespoke/intermediate_b_signed_by_rootca.crt");

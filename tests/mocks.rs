@@ -2,6 +2,19 @@ extern crate serde_json;
 
 extern crate certificate_carver;
 
+use std::cell::RefCell;
+
+use certificate_carver::{CrtShServer, CertificateFingerprint};
+use certificate_carver::{LogServers, LogInfo, CertificateChain, AddChainResponse, GetRootsResponse};
+
+pub struct MockCrtShServer();
+
+impl CrtShServer for MockCrtShServer {
+    fn check_crtsh (&self, _fp: &CertificateFingerprint) -> Result<bool, Box<std::error::Error>> {
+        return Ok(false)
+    }
+}
+
 #[derive(Debug)]
 struct MockLogError(String);
 
@@ -14,9 +27,17 @@ impl std::fmt::Display for MockLogError {
 impl std::error::Error for MockLogError {
 }
 
-use certificate_carver::{LogServers, LogInfo, CertificateChain, AddChainResponse, GetRootsResponse};
+pub struct MockLogServers {
+    pub add_chain_count: RefCell<usize>
+}
 
-pub struct MockLogServers();
+impl MockLogServers {
+    pub fn new() -> MockLogServers {
+        MockLogServers {
+            add_chain_count: RefCell::new(0)
+        }
+    }
+}
 
 impl LogServers for MockLogServers {
     fn fetch_roots_resp(&self, log: &LogInfo) -> Result<GetRootsResponse, Box<std::error::Error>>{
@@ -48,6 +69,8 @@ impl LogServers for MockLogServers {
         let resp: AddChainResponse = serde_json::from_str(
             "{\"sct_version\":0,\"id\":\"pLkJkLQYWBSHuxOizGdwCjw1mAT5G9+443fNDsgN3BA=\",\"timestamp\":1519606625707,\"extensions\":\"\",\"signature\":\"BAMARzBFAiEAmqLo0/5CaAgNZdpsBgDKFAwKgQ4g2fLfMTUe8LLEYVQCIDhUD2coHB7IOV844lDSpm5Tmfh7FGaWtCFOZnSxGYiK\"}"
         )?;
+        let mut count = self.add_chain_count.borrow_mut();
+        *count += 1;
         Ok(Ok(resp))
     }
 }
