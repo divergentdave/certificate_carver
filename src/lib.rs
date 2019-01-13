@@ -3,7 +3,7 @@ extern crate encoding;
 extern crate hex;
 extern crate regex;
 extern crate reqwest;
-extern crate ring;
+extern crate sha2;
 extern crate stringprep;
 extern crate unicode_normalization;
 extern crate untrusted;
@@ -27,7 +27,7 @@ use std::path::Path;
 use std::str;
 use regex::bytes::Regex;
 use reqwest::Url;
-use ring::digest::{digest, SHA256};
+use sha2::{Sha256, Digest};
 use walkdir::WalkDir;
 use zip::read::ZipArchive;
 
@@ -97,9 +97,10 @@ pub struct CertificateBytes (
 
 impl CertificateBytes {
     pub fn fingerprint(&self) -> CertificateFingerprint {
-        let digest = digest(&SHA256, self.as_ref());
+        let mut digest = Sha256::new();
+        digest.input(self.as_ref());
         let mut arr: [u8; 32] = Default::default();
-        arr.copy_from_slice(digest.as_ref());
+        arr.copy_from_slice(&digest.result());
         CertificateFingerprint(arr)
     }
 }

@@ -1,11 +1,10 @@
-use ring;
 use untrusted;
 
 use std::io::Write;
-use ring::digest::{digest, SHA256};
 
 use encoding::{Encoding, DecoderTrap};
 use encoding::all::ISO_8859_1;
+use sha2::{Sha256, Digest};
 
 use CertificateFingerprint;
 
@@ -108,9 +107,10 @@ impl Certificate {
     }
 
     pub fn fingerprint(&self) -> CertificateFingerprint {
-        let digest = digest(&SHA256, self.as_ref());
+        let mut digest = Sha256::new();
+        digest.input(self.as_ref());
         let mut arr: [u8; 32] = Default::default();
-        arr.copy_from_slice(digest.as_ref());
+        arr.copy_from_slice(&digest.result());
         CertificateFingerprint(arr)
     }
 
@@ -433,9 +433,41 @@ fn expect_tag_and_get_value<'a>(input: &mut untrusted::Reader<'a>, tag: Tag, err
     Ok(inner)
 }
 
-#[inline(always)]
 fn read_tag_and_get_value<'a>(input: &mut untrusted::Reader<'a>, error: Error) -> Result<(u8, untrusted::Input<'a>), Error> {
-    ring::io::der::read_tag_and_get_value(input).map_err(|_| error)
+    // based on ring::io::der::read_tag_and_get_value
+    let tag = input.read_byte().map_err(|_| error)?;
+    if (tag & 0x1F) == 0x1F {
+        return Err(error); // High tag number form is not allowed.
+    }
+
+    // If the high order bit of the first byte is set to zero then the length
+    // is encoded in the seven remaining bits of that byte. Otherwise, those
+    // seven bits represent the number of bytes used to encode the length.
+    let length = match input.read_byte().map_err(|_| error)? {
+        n if (n & 0x80) == 0 => n as usize,
+        0x81 => {
+            let second_byte = input.read_byte().map_err(|_| error)?;
+            if second_byte < 128 {
+                return Err(error);  // Not the canonical encoding.
+            }
+            second_byte as usize
+        },
+        0x82 => {
+            let second_byte = input.read_byte().map_err(|_| error)? as usize;
+            let third_byte = input.read_byte().map_err(|_| error)? as usize;
+            let combined = (second_byte << 8) | third_byte;
+            if combined < 256 {
+                return Err(error); // Not the canonical encoding.
+            }
+            combined
+        },
+        _ => {
+            return Err(error); // We don't support longer lengths.
+        },
+    };
+
+    let inner = input.skip_and_get_input(length).map_err(|_| error)?;
+    Ok((tag, inner))
 }
 
 fn skip(input: &mut untrusted::Reader, tag: Tag, error: Error) -> Result<(), Error> {
