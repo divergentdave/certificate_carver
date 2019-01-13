@@ -4,7 +4,7 @@ mod utils;
 
 use certificate_carver::x509::Certificate;
 
-use utils::decode_pem;
+use crate::utils::decode_pem;
 
 #[test]
 fn test_issued_bespoke() {

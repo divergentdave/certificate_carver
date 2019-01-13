@@ -31,7 +31,7 @@ use std::str;
 use walkdir::WalkDir;
 use zip::read::ZipArchive;
 
-use x509::Certificate;
+use crate::x509::Certificate;
 
 const ZIP_MAGIC: [u8; 4] = [0x50, 0x4b, 3, 4];
 
@@ -255,8 +255,8 @@ impl Carver {
     pub fn add_cert(&mut self, der: &CertificateBytes, path: &str) {
         if let Ok(cert) = Certificate::new(der.0.clone()) {
             let digest = der.fingerprint();
-            let mut entry = self.map.entry(digest);
-            let mut info = entry.or_insert_with(|| CertificateRecord::new(der.clone(), cert));
+            let entry = self.map.entry(digest);
+            let info = entry.or_insert_with(|| CertificateRecord::new(der.clone(), cert));
             info.paths.push(String::from(path));
         }
     }
@@ -371,7 +371,7 @@ impl Carver {
                 }
                 let subject = &subject_info.cert;
                 if issuer.issued(subject) {
-                    let mut issuer_fps = lookup.entry(subject_fp.clone()).or_insert_with(Vec::new);
+                    let issuer_fps = lookup.entry(subject_fp.clone()).or_insert_with(Vec::new);
                     issuer_fps.push(issuer_fp.clone());
                 }
             }

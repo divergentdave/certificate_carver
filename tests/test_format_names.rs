@@ -6,7 +6,7 @@ use std::io::{Cursor, Read, Seek, SeekFrom};
 
 use certificate_carver::x509::Certificate;
 
-use utils::decode_pem;
+use crate::utils::decode_pem;
 
 fn test_format_names_helper(pem: &[u8], expected: &str) {
     let cert = Certificate::new(decode_pem(pem)).unwrap();

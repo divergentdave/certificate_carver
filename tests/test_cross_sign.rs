@@ -7,7 +7,7 @@ use std::io::Cursor;
 use certificate_carver::x509::Certificate;
 use certificate_carver::{Carver, CertificateBytes, LogInfo};
 
-use utils::decode_pem;
+use crate::utils::decode_pem;
 
 #[test]
 fn test_fixture_bespoke_certs() {

@@ -2,8 +2,8 @@ extern crate certificate_carver;
 
 mod mocks;
 
+use crate::mocks::{MockCrtShServer, MockLogServers};
 use certificate_carver::Carver;
-use mocks::{MockCrtShServer, MockLogServers};
 
 #[test]
 fn test_run() {

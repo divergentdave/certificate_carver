@@ -6,9 +6,9 @@ use encoding::all::ISO_8859_1;
 use encoding::{DecoderTrap, Encoding};
 use sha2::{Digest, Sha256};
 
-use CertificateFingerprint;
+use crate::CertificateFingerprint;
 
-use ldapprep::ldapprep_case_insensitive;
+use crate::ldapprep::ldapprep_case_insensitive;
 
 const CONSTRUCTED: u8 = 1 << 5;
 const CONTEXT_SPECIFIC: u8 = 2 << 6;
