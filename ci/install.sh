@@ -8,8 +8,6 @@ main() {
     else
         target=x86_64-apple-darwin
         sort=gsort  # for `sort --sort-version`, from brew's coreutils.
-
-        brew install openssl
     fi
 
     # Builds for iOS are done on OSX, but require the specific target to be
