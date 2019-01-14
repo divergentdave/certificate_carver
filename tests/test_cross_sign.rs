@@ -11,11 +11,11 @@ use crate::utils::decode_pem;
 
 #[test]
 fn test_fixture_bespoke_certs() {
-    let cert3 = Certificate::new(decode_pem(include_bytes!(
+    let cert3 = Certificate::parse(decode_pem(include_bytes!(
         "files/bespoke/intermediate_a/intermediate_b_signed_by_intermediate_a.crt"
     )))
     .unwrap();
-    let cert4 = Certificate::new(decode_pem(include_bytes!(
+    let cert4 = Certificate::parse(decode_pem(include_bytes!(
         "files/bespoke/intermediate_b/intermediate_a_signed_by_intermediate_b.crt"
     )))
     .unwrap();

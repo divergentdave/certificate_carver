@@ -7,7 +7,7 @@ pub enum Error {
     ProhibitedBidirectionalText,
 }
 
-pub fn ldapprep_case_insensitive<'a>(s: &'a str) -> Result<Cow<'a, str>, Error> {
+pub fn ldapprep_case_insensitive(s: &'_ str) -> Result<Cow<'_, str>, Error> {
     // Prepares strings for caseIgnoreMatch comparisons per RFC 5280 § 7.1, which refers to
     // RFC 4518.
 
@@ -44,9 +44,9 @@ pub fn ldapprep_case_insensitive<'a>(s: &'a str) -> Result<Cow<'a, str>, Error> 
         let mut result = words.join("  ");
         result.insert(0, ' ');
         result.push(' ');
-        return Ok(Cow::Owned(result));
+        Ok(Cow::Owned(result))
     } else {
-        return Ok(Cow::Owned(String::from("  ")));
+        Ok(Cow::Owned(String::from("  ")))
     }
 }
 

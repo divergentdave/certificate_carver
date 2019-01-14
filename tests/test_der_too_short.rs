@@ -13,5 +13,5 @@ fn test_der_too_short() {
     let mut stream = Cursor::new(&BYTES);
     let carver = Carver::new(Vec::new());
     let certs = carver.carve_stream(&mut stream);
-    assert!(certs.len() == 0);
+    assert!(certs.is_empty());
 }

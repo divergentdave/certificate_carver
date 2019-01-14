@@ -121,7 +121,7 @@ pub struct CertificateRecord {
 }
 
 impl CertificateRecord {
-    fn new(der: CertificateBytes, cert: Certificate) -> CertificateRecord {
+    fn new(der: &CertificateBytes, cert: Certificate) -> CertificateRecord {
         CertificateRecord {
             paths: Vec::new(),
             der: der.clone(),
@@ -212,6 +212,7 @@ impl LogServers for RealLogServers {
     }
 }
 
+#[derive(Default)]
 pub struct TrustRoots {
     root_fps: HashSet<CertificateFingerprint>,
 }
@@ -253,10 +254,10 @@ impl Carver {
     }
 
     pub fn add_cert(&mut self, der: &CertificateBytes, path: &str) {
-        if let Ok(cert) = Certificate::new(der.0.clone()) {
+        if let Ok(cert) = Certificate::parse(der.0.clone()) {
             let digest = der.fingerprint();
             let entry = self.map.entry(digest);
-            let info = entry.or_insert_with(|| CertificateRecord::new(der.clone(), cert));
+            let info = entry.or_insert_with(|| CertificateRecord::new(&der, cert));
             info.paths.push(String::from(path));
         }
     }
@@ -387,7 +388,7 @@ impl Carver {
     ) -> Vec<CertificateChain> {
         fn recurse<'a>(
             fp: &'a CertificateFingerprint,
-            history: Vec<CertificateFingerprint>,
+            history: &[CertificateFingerprint],
             issuer_lookup: &'a HashMap<CertificateFingerprint, Vec<CertificateFingerprint>>,
             trust_roots: &TrustRoots,
         ) -> Vec<Vec<CertificateFingerprint>> {
@@ -404,7 +405,7 @@ impl Carver {
                     if in_history {
                         continue;
                     }
-                    let mut new = history.clone();
+                    let mut new = history.to_owned();
                     new.push(fp.clone());
                     match trust_roots.test_fingerprint(&issuer_fp) {
                         Ok(_) => {
@@ -413,7 +414,7 @@ impl Carver {
                             // only want this chain once, even if we have multiple equivalent roots
                         }
                         Err(_) => {
-                            let mut result = recurse(issuer_fp, new, issuer_lookup, trust_roots);
+                            let mut result = recurse(issuer_fp, &new, issuer_lookup, trust_roots);
                             partial_chains.append(&mut result);
                         }
                     }
@@ -423,7 +424,7 @@ impl Carver {
                 Vec::new()
             }
         }
-        let fp_chains = recurse(leaf_fp, Vec::new(), issuer_lookup, trust_roots);
+        let fp_chains = recurse(leaf_fp, &Vec::new(), issuer_lookup, trust_roots);
         fp_chains
             .iter()
             .map(|fp_chain| {
@@ -432,7 +433,7 @@ impl Carver {
             .collect()
     }
 
-    pub fn run(&mut self, args: Vec<String>, crtsh: &CrtShServer, log_comms: &LogServers) {
+    pub fn run(&mut self, args: &[String], crtsh: &CrtShServer, log_comms: &LogServers) {
         for arg in args.iter() {
             self.scan_directory_or_file(&arg);
         }
@@ -468,7 +469,7 @@ impl Carver {
                 continue;
             }
             let found = crtsh.check_crtsh(fp).unwrap();
-            &info.cert.format_issuer_subject(&mut stdout()).unwrap();
+            info.cert.format_issuer_subject(&mut stdout()).unwrap();
             println!();
             println!(
                 "{}, crtsh seen = {}, {} file paths",

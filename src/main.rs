@@ -18,8 +18,8 @@ const LOG_URLS: [&str; 8] = [
 fn main() {
     let mut iter = args();
     iter.next(); // skip argv[0]
-    let args = iter.map(|s| String::from(s)).collect::<Vec<String>>();
-    if args.len() == 0 {
+    let args = iter.collect::<Vec<String>>();
+    if args.is_empty() {
         panic!("pass at least one directory as a command line argument");
     }
     let logs = LOG_URLS
@@ -29,5 +29,5 @@ fn main() {
     let mut carver = Carver::new(logs);
     let crtsh = RealCrtShServer();
     let log_comms = RealLogServers();
-    carver.run(args, &crtsh, &log_comms);
+    carver.run(&args, &crtsh, &log_comms);
 }

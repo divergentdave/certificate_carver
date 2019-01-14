@@ -9,11 +9,12 @@ use certificate_carver::{
 };
 use certificate_carver::{CertificateFingerprint, CrtShServer};
 
+#[derive(Default)]
 pub struct MockCrtShServer();
 
 impl CrtShServer for MockCrtShServer {
     fn check_crtsh(&self, _fp: &CertificateFingerprint) -> Result<bool, Box<std::error::Error>> {
-        return Ok(false);
+        Ok(false)
     }
 }
 
@@ -28,6 +29,7 @@ impl std::fmt::Display for MockLogError {
 
 impl std::error::Error for MockLogError {}
 
+#[derive(Default)]
 pub struct MockLogServers {
     pub add_chain_count: RefCell<usize>,
 }

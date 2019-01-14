@@ -62,7 +62,7 @@ pub struct Certificate {
 }
 
 impl Certificate {
-    pub fn new(bytes: Vec<u8>) -> Result<Certificate, Error> {
+    pub fn parse(bytes: Vec<u8>) -> Result<Certificate, Error> {
         let (issuer, subject) = Certificate::parse_cert_names(bytes.as_ref())?;
         Ok(Certificate {
             bytes,
@@ -256,16 +256,14 @@ impl PartialEq for NameTypeValue {
     }
 }
 
-fn parse_directory_string(raw: &Vec<u8>) -> Option<String> {
-    let input = untrusted::Input::from(raw.as_ref());
+fn parse_directory_string(raw: &[u8]) -> Option<String> {
+    let input = untrusted::Input::from(raw);
     if let Ok((tag, inner)) = input.read_all(Error::BadDERString, |value_der| {
         read_tag_and_get_value(value_der, Error::BadDERString)
     }) {
         let tag_usize: usize = tag as usize;
         let slice = inner.as_slice_less_safe();
-        if tag_usize == (Tag::Utf8String as usize) {
-            String::from_utf8(slice.to_vec()).ok()
-        } else if tag_usize == (Tag::PrintableString as usize) {
+        if tag_usize == (Tag::Utf8String as usize) || tag_usize == (Tag::PrintableString as usize) {
             String::from_utf8(slice.to_vec()).ok()
         } else if tag_usize == (Tag::TeletexString as usize) {
             let mut decoded = String::new();
@@ -303,7 +301,7 @@ impl PartialEq for RelativeDistinguishedName {
                 return false;
             }
         }
-        return true;
+        true
     }
 }
 
@@ -318,15 +316,12 @@ pub struct NameInfo {
 impl NameInfo {
     pub fn new(bytes: Vec<u8>) -> NameInfo {
         let rdns = NameInfo::parse_rdns(&bytes);
-        NameInfo {
-            bytes: bytes,
-            rdns: rdns,
-        }
+        NameInfo { bytes, rdns }
     }
 
-    fn parse_rdns(bytes: &Vec<u8>) -> Result<Vec<RelativeDistinguishedName>, Error> {
+    fn parse_rdns(bytes: &[u8]) -> Result<Vec<RelativeDistinguishedName>, Error> {
         let mut results: Vec<RelativeDistinguishedName> = Vec::new();
-        let name_der = untrusted::Input::from(bytes.as_ref());
+        let name_der = untrusted::Input::from(bytes);
         name_der.read_all(Error::BadDERDistinguishedNameExtraData, |name_der| {
             while !name_der.at_end() {
                 let mut attribs: Vec<NameTypeValue> = Vec::new();

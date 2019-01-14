@@ -9,7 +9,7 @@ use certificate_carver::x509::Certificate;
 use crate::utils::decode_pem;
 
 fn test_format_names_helper(pem: &[u8], expected: &str) {
-    let cert = Certificate::new(decode_pem(pem)).unwrap();
+    let cert = Certificate::parse(decode_pem(pem)).unwrap();
     let mut cur: Cursor<Vec<u8>> = Cursor::new(Vec::new());
     cert.format_issuer_subject(&mut cur).unwrap();
     cur.seek(SeekFrom::Start(0)).unwrap();
