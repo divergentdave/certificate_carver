@@ -27,7 +27,7 @@ fn test_offset_pem_cert() {
         let offset: usize = MAX_PADDING - *padding;
         let mut stream = Cursor::new(&padded[offset..]);
         let certs = carver.carve_file(&mut stream);
-        assert!(certs.len() == 2);
+        assert_eq!(certs.len(), 2);
     }
 }
 

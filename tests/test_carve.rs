@@ -10,7 +10,7 @@ fn test_load_pem_chain() {
     let mut stream = Cursor::new(&bytes[..]);
     let carver = Carver::new(Vec::new());
     let certs = carver.carve_file(&mut stream);
-    assert!(certs.len() == 2);
+    assert_eq!(certs.len(), 2);
 }
 
 #[test]
@@ -19,7 +19,7 @@ fn test_load_zip_chain() {
     let mut stream = Cursor::new(&bytes[..]);
     let carver = Carver::new(Vec::new());
     let certs = carver.carve_file(&mut stream);
-    assert!(certs.len() == 2);
+    assert_eq!(certs.len(), 2);
 }
 
 #[test]
@@ -28,5 +28,5 @@ fn test_load_der_cert() {
     let mut stream = Cursor::new(&bytes[..]);
     let carver = Carver::new(Vec::new());
     let certs = carver.carve_file(&mut stream);
-    assert!(certs.len() == 1);
+    assert_eq!(certs.len(), 1);
 }

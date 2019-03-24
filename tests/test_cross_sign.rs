@@ -44,7 +44,7 @@ fn test_cross_signatures() {
     carver.scan_file_object(&mut cert2, "cert2");
     carver.scan_file_object(&mut cert3, "cert3");
     carver.scan_file_object(&mut cert4, "cert4");
-    assert!(carver.map.len() == 5);
+    assert_eq!(carver.map.len(), 5);
     let issuer_lookup = carver.build_issuer_lookup();
 
     let mut log = LogInfo::new("http://127.0.0.0/");
@@ -52,5 +52,5 @@ fn test_cross_signatures() {
         .add_roots(&[CertificateBytes(decode_pem(root_pem))]);
 
     let chains = carver.build_chains(&cert4_fp, &issuer_lookup, &log.trust_roots);
-    assert!(chains.len() == 2);
+    assert_eq!(chains.len(), 2);
 }
