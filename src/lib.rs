@@ -365,7 +365,7 @@ impl Carver {
                                 if let Ok(bytes) = pem_base64_decode(&encoded) {
                                     results.push(CertificateBytes(bytes));
                                 }
-                                b64_start + m2.end()
+                                m.end() - 5
                             }
                             None => {
                                 // The footer isn't in the buffer yet, try reading more if the
