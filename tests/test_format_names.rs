@@ -16,7 +16,7 @@ fn test_format_names_helper(pem: &[u8], expected: &str) {
     let mut string = String::new();
     cur.read_to_string(&mut string).unwrap();
     println!("{}", string);
-    assert!(string == expected);
+    assert_eq!(string, expected);
 }
 
 #[test]

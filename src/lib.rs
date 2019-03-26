@@ -1,4 +1,5 @@
 extern crate base64;
+extern crate copy_in_place;
 extern crate encoding;
 extern crate hex;
 extern crate regex;
@@ -19,6 +20,7 @@ extern crate serde_derive;
 pub mod ldapprep;
 pub mod x509;
 
+use copy_in_place::copy_in_place;
 use regex::bytes::Regex;
 use reqwest::Url;
 use sha2::{Digest, Sha256};
@@ -240,6 +242,53 @@ impl TrustRoots {
     }
 }
 
+struct BufReaderOverlap<R> {
+    inner: R,
+    buf: Box<[u8]>,
+    pos: usize,
+    cap: usize,
+}
+
+impl<R: Read> BufReaderOverlap<R> {
+    fn with_capacity(cap: usize, inner: R) -> BufReaderOverlap<R> {
+        BufReaderOverlap {
+            inner,
+            buf: vec![0; cap].into_boxed_slice(),
+            pos: 0,
+            cap: 0,
+        }
+    }
+
+    fn fill_buf(&mut self, min_size: usize) -> std::io::Result<(&[u8], bool)> {
+        // like BufRead::fill_buf, but reads if there is min_size or less left in the buffer,
+        // not just when it is empty. Returns a buffer and a boolean to indicate end of file,
+        // or an error.
+        let remaining = self.cap - self.pos;
+        let mut eof = false;
+        if remaining <= min_size {
+            if self.pos > 0 {
+                copy_in_place(&mut self.buf, self.pos..self.cap, 0);
+                self.cap = remaining;
+                self.pos = 0;
+            }
+            while self.cap < self.buf.len() && self.cap <= min_size {
+                let n = self.inner.read(&mut self.buf[self.cap..])?;
+                self.cap += n;
+                if n == 0 {
+                    eof = true;
+                    break;
+                }
+            }
+        }
+        Ok((&self.buf[self.pos..self.cap], eof))
+    }
+
+    fn consume(&mut self, amt: usize) {
+        debug_assert!(self.pos + amt <= self.cap);
+        self.pos = std::cmp::min(self.pos + amt, self.cap);
+    }
+}
+
 pub struct Carver {
     pub log_urls: Vec<String>,
     pub map: HashMap<CertificateFingerprint, CertificateRecord>,
@@ -272,34 +321,82 @@ impl Carver {
 
         let mut results = Vec::new();
 
-        // TODO: stream through a buffer and keep searching that
-        let mut data = Vec::new();
-        match stream.read_to_end(&mut data) {
-            Ok(_) => (),
-            Err(_) => return results,
-        }
-        for caps in HEADER_RE.captures_iter(&data) {
-            if let Some(m) = caps.name("DER") {
-                let length_bytes = &caps["length"];
-                let length = ((length_bytes[0] as usize) << 8) | length_bytes[1] as usize;
-                let start = m.start();
-                let end = start + length + 4;
-                if end <= data.len() {
-                    results.push(CertificateBytes(data[start..end].to_vec()));
-                }
-            }
-            if let Some(m) = caps.name("PEM") {
-                let start = m.start() + 27;
-                if let Some(m2) = PEM_END_RE.find(&data[start..]) {
-                    let end = start + m2.start();
-                    let encoded = &data[start..end];
-                    if let Ok(bytes) = pem_base64_decode(&encoded) {
-                        results.push(CertificateBytes(bytes));
+        const MAX_CERTIFICATE_SIZE: usize = 16 * 1024;
+        const BUFFER_SIZE: usize = 32 * 1024;
+        const OVERLAP: usize = 27; // enough to capture the PEM header (and the DER prefix)
+        let mut stream = BufReaderOverlap::with_capacity(BUFFER_SIZE, stream);
+        let mut min_size = OVERLAP;
+        loop {
+            let (buf, eof) = match stream.fill_buf(min_size) {
+                Ok((buf, eof)) => (buf, eof),
+                Err(_) => return results,
+            };
+            min_size = OVERLAP;
+            let consume_amount: usize = match HEADER_RE.captures(&buf) {
+                Some(caps) => {
+                    if let Some(m) = caps.name("DER") {
+                        let length_bytes = &caps["length"];
+                        let length = ((length_bytes[0] as usize) << 8) | length_bytes[1] as usize;
+                        let start = m.start();
+                        let end = start + length + 4;
+                        if end <= buf.len() {
+                            results.push(CertificateBytes(buf[start..end].to_vec()));
+                            end
+                        } else {
+                            // The end of this certificate isn't in the buffer yet, try reading
+                            // more if the buffer is too small
+                            if buf.len() - start < MAX_CERTIFICATE_SIZE && !eof {
+                                min_size = MAX_CERTIFICATE_SIZE;
+                                start
+                            } else {
+                                // The DER sequence is too long, this was probably a false
+                                // positive. Discard the first byte of the match, and keep
+                                // searching from there.
+                                1
+                            }
+                        }
+                    } else if let Some(m) = caps.name("PEM") {
+                        let header_start = m.start();
+                        let b64_start = header_start + 27;
+                        match PEM_END_RE.find(&buf[b64_start..]) {
+                            Some(m2) => {
+                                let b64_end = b64_start + m2.start();
+                                let encoded = &buf[b64_start..b64_end];
+                                if let Ok(bytes) = pem_base64_decode(&encoded) {
+                                    results.push(CertificateBytes(bytes));
+                                }
+                                m.end() - 5
+                            }
+                            None => {
+                                // The footer isn't in the buffer yet, try reading more if the
+                                // buffer is too small
+                                if buf.len() - header_start < MAX_CERTIFICATE_SIZE && !eof {
+                                    min_size = MAX_CERTIFICATE_SIZE;
+                                    header_start
+                                } else {
+                                    // Couldn't find a footer, this was probably a false positive.
+                                    // Keep searching from after the header.
+                                    m.end() - 5
+                                }
+                            }
+                        }
+                    } else {
+                        panic!("Impossible else branch, if this regex matches, one of its two capturing groups must match");
                     }
                 }
-            }
+                None => {
+                    if eof {
+                        return results;
+                    }
+                    if buf.len() > OVERLAP {
+                        buf.len() - OVERLAP
+                    } else {
+                        0
+                    }
+                }
+            };
+            stream.consume(consume_amount);
         }
-        results
     }
 
     pub fn carve_file<RS: Read + Seek>(&self, mut file: &mut RS) -> Vec<CertificateBytes> {

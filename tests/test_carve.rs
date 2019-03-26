@@ -10,7 +10,7 @@ fn test_load_pem_chain() {
     let mut stream = Cursor::new(&bytes[..]);
     let carver = Carver::new(Vec::new());
     let certs = carver.carve_file(&mut stream);
-    assert!(certs.len() == 2);
+    assert_eq!(certs.len(), 2);
 }
 
 #[test]
@@ -19,7 +19,7 @@ fn test_load_zip_chain() {
     let mut stream = Cursor::new(&bytes[..]);
     let carver = Carver::new(Vec::new());
     let certs = carver.carve_file(&mut stream);
-    assert!(certs.len() == 2);
+    assert_eq!(certs.len(), 2);
 }
 
 #[test]
@@ -28,5 +28,20 @@ fn test_load_der_cert() {
     let mut stream = Cursor::new(&bytes[..]);
     let carver = Carver::new(Vec::new());
     let certs = carver.carve_file(&mut stream);
-    assert!(certs.len() == 1);
+    assert_eq!(certs.len(), 1);
+}
+
+#[test]
+fn test_overlapping_pem_header() {
+    let mut bytes = Vec::new();
+    //bytes.extend_from_slice(b"-----BEGIN CERTIFICATE");
+    bytes.extend_from_slice(b"-----BEGIN CERTIFICATE");
+    bytes.extend_from_slice(include_bytes!("files/bespoke/rootca.crt"));
+    let mut stream = Cursor::new(bytes);
+    let carver = Carver::new(Vec::new());
+    let certs = carver.carve_file(&mut stream);
+    assert_eq!(certs.len(), 1);
+    let cert = &certs[0];
+    let fp = cert.fingerprint();
+    assert_eq!(&fp.0, b"\x34\x47\x5A\x72\x1C\xF4\x8D\x2F\x90\x79\x31\x6E\x7E\x32\xC4\xBE\x83\x35\x8D\xD7\xD4\x42\xD9\x31\x12\x6D\x02\x16\x26\xC7\x12\x3D");
 }
