@@ -4,8 +4,9 @@ mod utils;
 
 use std::io::Cursor;
 
+use certificate_carver::ctlog::LogInfo;
 use certificate_carver::x509::Certificate;
-use certificate_carver::{Carver, CertificateBytes, LogInfo};
+use certificate_carver::{Carver, CertificateBytes};
 
 use crate::utils::decode_pem;
 

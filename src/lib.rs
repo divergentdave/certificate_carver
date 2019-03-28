@@ -17,6 +17,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate serde_derive;
 
+pub mod ctlog;
 pub mod ldapprep;
 pub mod x509;
 
@@ -24,7 +25,7 @@ use copy_in_place::copy_in_place;
 use regex::bytes::Regex;
 use reqwest::Url;
 use sha2::{Digest, Sha256};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
 use std::io::{stdout, Read, Seek, SeekFrom};
@@ -33,6 +34,7 @@ use std::str;
 use walkdir::WalkDir;
 use zip::read::ZipArchive;
 
+use crate::ctlog::{LogInfo, LogServers, TrustRoots};
 use crate::x509::Certificate;
 
 const ZIP_MAGIC: [u8; 4] = [0x50, 0x4b, 3, 4];
@@ -52,25 +54,6 @@ fn pem_base64_encode(input: &[u8]) -> String {
 
 fn pem_base64_decode<T: ?Sized + AsRef<[u8]>>(input: &T) -> Result<Vec<u8>, base64::DecodeError> {
     base64::decode_config(input, pem_base64_config())
-}
-
-#[derive(Deserialize)]
-pub struct GetRootsResponse {
-    certificates: Vec<String>,
-}
-
-#[derive(Serialize)]
-pub struct AddChainRequest {
-    chain: Vec<String>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct AddChainResponse {
-    sct_version: u8,
-    id: String,
-    timestamp: u64,
-    extensions: String,
-    signature: String,
 }
 
 // should make separate types for fingerprints and cert der instead of using Vec<u8>
@@ -128,116 +111,6 @@ impl CertificateRecord {
             paths: Vec::new(),
             der: der.clone(),
             cert,
-        }
-    }
-}
-
-pub struct LogInfo {
-    url: Url,
-    pub roots: Vec<CertificateBytes>,
-    pub trust_roots: TrustRoots,
-}
-
-impl LogInfo {
-    pub fn new(url: &str) -> LogInfo {
-        LogInfo {
-            url: Url::parse(url).unwrap(),
-            roots: Vec::new(),
-            trust_roots: TrustRoots::new(),
-        }
-    }
-
-    pub fn fetch_roots(
-        &self,
-        log_comms: &LogServers,
-    ) -> Result<Vec<CertificateBytes>, Box<std::error::Error>> {
-        let body = log_comms.fetch_roots_resp(self)?;
-        let mut vec = Vec::new();
-        for encoded in body.certificates {
-            let bytes = pem_base64_decode(&encoded).unwrap();
-            vec.push(CertificateBytes(bytes));
-        }
-        Ok(vec)
-    }
-
-    fn submit_chain(
-        &self,
-        chain: &CertificateChain,
-    ) -> Result<Result<AddChainResponse, reqwest::StatusCode>, Box<std::error::Error>> {
-        // TODO: which order? should have leaf first, i think we're okay
-        let url = self.url.join("ct/v1/add-chain").unwrap();
-        let encoded = chain
-            .0
-            .iter()
-            .map(|c| pem_base64_encode(c.as_ref()))
-            .collect();
-        let request_body = AddChainRequest { chain: encoded };
-        let client = reqwest::Client::new();
-        let mut response = client.post(url).json(&request_body).send()?;
-        if !response.status().is_success() {
-            return Ok(Err(response.status()));
-        }
-        let response_body: AddChainResponse = response.json()?;
-        Ok(Ok(response_body))
-    }
-
-    pub fn get_url(&self) -> &Url {
-        &self.url
-    }
-}
-
-pub trait LogServers {
-    fn fetch_roots_resp(&self, log: &LogInfo) -> Result<GetRootsResponse, Box<std::error::Error>>;
-    fn submit_chain(
-        &self,
-        log: &LogInfo,
-        chain: &CertificateChain,
-    ) -> Result<Result<AddChainResponse, reqwest::StatusCode>, Box<std::error::Error>>;
-}
-
-pub struct RealLogServers();
-
-impl LogServers for RealLogServers {
-    fn fetch_roots_resp(&self, log: &LogInfo) -> Result<GetRootsResponse, Box<std::error::Error>> {
-        let url = log.get_url().join("ct/v1/get-roots")?;
-        let mut resp = reqwest::get(url)?;
-        resp.json()
-            .map_err(|e: reqwest::Error| -> Box<std::error::Error> { Box::new(e) })
-    }
-
-    fn submit_chain(
-        &self,
-        log: &LogInfo,
-        chain: &CertificateChain,
-    ) -> Result<Result<AddChainResponse, reqwest::StatusCode>, Box<std::error::Error>> {
-        log.submit_chain(chain)
-    }
-}
-
-#[derive(Default)]
-pub struct TrustRoots {
-    root_fps: HashSet<CertificateFingerprint>,
-}
-
-impl TrustRoots {
-    pub fn new() -> TrustRoots {
-        TrustRoots {
-            root_fps: HashSet::new(),
-        }
-    }
-
-    pub fn add_roots(&mut self, roots: &[CertificateBytes]) {
-        for root in roots.iter() {
-            let fp = root.fingerprint();
-            self.root_fps.insert(fp);
-        }
-    }
-
-    pub fn test_fingerprint(&self, fp: &CertificateFingerprint) -> Result<(), ()> {
-        if self.root_fps.contains(fp) {
-            Ok(())
-        } else {
-            Err(())
         }
     }
 }
@@ -672,6 +545,8 @@ pub trait CrtShServer {
 pub struct RealCrtShServer();
 
 impl CrtShServer for RealCrtShServer {
+    // true: certificate has already been indexed
+    // false: certificate has not been indexed
     fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, Box<std::error::Error>> {
         let url_str = format!("https://crt.sh/?q={}", fp);
         let url = Url::parse(&url_str).unwrap();

@@ -4,10 +4,8 @@ extern crate certificate_carver;
 
 use std::cell::RefCell;
 
-use certificate_carver::{
-    AddChainResponse, CertificateChain, GetRootsResponse, LogInfo, LogServers,
-};
-use certificate_carver::{CertificateFingerprint, CrtShServer};
+use certificate_carver::ctlog::{AddChainResponse, GetRootsResponse, LogInfo, LogServers};
+use certificate_carver::{CertificateChain, CertificateFingerprint, CrtShServer};
 
 #[derive(Default)]
 pub struct MockCrtShServer();

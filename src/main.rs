@@ -2,7 +2,8 @@ extern crate certificate_carver;
 
 use std::env::args;
 
-use certificate_carver::{Carver, RealCrtShServer, RealLogServers};
+use certificate_carver::ctlog::RealLogServers;
+use certificate_carver::{Carver, RealCrtShServer};
 
 const LOG_URLS: [&str; 8] = [
     "https://ct.googleapis.com/pilot/",
