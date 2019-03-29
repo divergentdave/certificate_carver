@@ -52,23 +52,6 @@ impl LogInfo {
         Ok(vec)
     }
 
-    fn submit_chain(&self, chain: &CertificateChain) -> Result<AddChainResponse, APIError> {
-        let url = self.url.join("ct/v1/add-chain").unwrap();
-        let encoded = chain
-            .0
-            .iter()
-            .map(|c| pem_base64_encode(c.as_ref()))
-            .collect();
-        let request_body = AddChainRequest { chain: encoded };
-        let client = reqwest::Client::new();
-        let mut response = client.post(url).json(&request_body).send()?;
-        if !response.status().is_success() {
-            return Err(APIError::Status(response.status()));
-        }
-        let response_body: AddChainResponse = response.json()?;
-        Ok(response_body)
-    }
-
     pub fn get_url(&self) -> &Url {
         &self.url
     }
@@ -97,7 +80,20 @@ impl LogServers for RealLogServers {
         log: &LogInfo,
         chain: &CertificateChain,
     ) -> Result<AddChainResponse, APIError> {
-        log.submit_chain(chain)
+        let url = log.url.join("ct/v1/add-chain").unwrap();
+        let encoded = chain
+            .0
+            .iter()
+            .map(|c| pem_base64_encode(c.as_ref()))
+            .collect();
+        let request_body = AddChainRequest { chain: encoded };
+        let client = reqwest::Client::new();
+        let mut response = client.post(url).json(&request_body).send()?;
+        if !response.status().is_success() {
+            return Err(APIError::Status(response.status()));
+        }
+        let response_body: AddChainResponse = response.json()?;
+        Ok(response_body)
     }
 }
 
