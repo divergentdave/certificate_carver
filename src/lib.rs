@@ -441,13 +441,11 @@ impl Carver {
         for log_url in self.log_urls.clone().iter() {
             let mut log = LogInfo::new(log_url);
             match log.fetch_roots(log_comms) {
-                Ok(roots) => {
-                    log.roots = roots;
+                Ok(_) => {
                     for root_der in &log.roots[..] {
                         self.add_cert(root_der, "log roots");
                     }
                     all_roots.add_roots(&log.roots);
-                    log.trust_roots.add_roots(&log.roots);
                     logs.push(log);
                 }
                 Err(e) => {

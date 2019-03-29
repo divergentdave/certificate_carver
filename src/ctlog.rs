@@ -39,17 +39,16 @@ impl LogInfo {
         }
     }
 
-    pub fn fetch_roots(
-        &self,
-        log_comms: &LogServers,
-    ) -> Result<Vec<CertificateBytes>, Box<std::error::Error>> {
+    pub fn fetch_roots(&mut self, log_comms: &LogServers) -> Result<(), Box<std::error::Error>> {
         let body = log_comms.fetch_roots_resp(self)?;
         let mut vec = Vec::new();
         for encoded in body.certificates {
             let bytes = pem_base64_decode(&encoded).unwrap();
             vec.push(CertificateBytes(bytes));
         }
-        Ok(vec)
+        self.roots = vec;
+        self.trust_roots.add_roots(&self.roots);
+        Ok(())
     }
 
     pub fn get_url(&self) -> &Url {
