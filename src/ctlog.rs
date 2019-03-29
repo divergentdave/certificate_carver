@@ -1,5 +1,5 @@
 use crate::{
-    pem_base64_decode, pem_base64_encode, CertificateBytes, CertificateChain,
+    pem_base64_decode, pem_base64_encode, APIError, CertificateBytes, CertificateChain,
     CertificateFingerprint,
 };
 use reqwest::Url;
@@ -52,11 +52,7 @@ impl LogInfo {
         Ok(vec)
     }
 
-    fn submit_chain(
-        &self,
-        chain: &CertificateChain,
-    ) -> Result<Result<AddChainResponse, reqwest::StatusCode>, Box<std::error::Error>> {
-        // TODO: which order? should have leaf first, i think we're okay
+    fn submit_chain(&self, chain: &CertificateChain) -> Result<AddChainResponse, APIError> {
         let url = self.url.join("ct/v1/add-chain").unwrap();
         let encoded = chain
             .0
@@ -67,10 +63,10 @@ impl LogInfo {
         let client = reqwest::Client::new();
         let mut response = client.post(url).json(&request_body).send()?;
         if !response.status().is_success() {
-            return Ok(Err(response.status()));
+            return Err(APIError::Status(response.status()));
         }
         let response_body: AddChainResponse = response.json()?;
-        Ok(Ok(response_body))
+        Ok(response_body)
     }
 
     pub fn get_url(&self) -> &Url {
@@ -79,29 +75,28 @@ impl LogInfo {
 }
 
 pub trait LogServers {
-    fn fetch_roots_resp(&self, log: &LogInfo) -> Result<GetRootsResponse, Box<std::error::Error>>;
+    fn fetch_roots_resp(&self, log: &LogInfo) -> Result<GetRootsResponse, APIError>;
     fn submit_chain(
         &self,
         log: &LogInfo,
         chain: &CertificateChain,
-    ) -> Result<Result<AddChainResponse, reqwest::StatusCode>, Box<std::error::Error>>;
+    ) -> Result<AddChainResponse, APIError>;
 }
 
 pub struct RealLogServers();
 
 impl LogServers for RealLogServers {
-    fn fetch_roots_resp(&self, log: &LogInfo) -> Result<GetRootsResponse, Box<std::error::Error>> {
-        let url = log.get_url().join("ct/v1/get-roots")?;
+    fn fetch_roots_resp(&self, log: &LogInfo) -> Result<GetRootsResponse, APIError> {
+        let url = log.get_url().join("ct/v1/get-roots").unwrap();
         let mut resp = reqwest::get(url)?;
-        resp.json()
-            .map_err(|e: reqwest::Error| -> Box<std::error::Error> { Box::new(e) })
+        resp.json().map_err(|e| APIError::Network(e))
     }
 
     fn submit_chain(
         &self,
         log: &LogInfo,
         chain: &CertificateChain,
-    ) -> Result<Result<AddChainResponse, reqwest::StatusCode>, Box<std::error::Error>> {
+    ) -> Result<AddChainResponse, APIError> {
         log.submit_chain(chain)
     }
 }
@@ -125,11 +120,7 @@ impl TrustRoots {
         }
     }
 
-    pub fn test_fingerprint(&self, fp: &CertificateFingerprint) -> Result<(), ()> {
-        if self.root_fps.contains(fp) {
-            Ok(())
-        } else {
-            Err(())
-        }
+    pub fn test_fingerprint(&self, fp: &CertificateFingerprint) -> bool {
+        self.root_fps.contains(fp)
     }
 }

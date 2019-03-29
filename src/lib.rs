@@ -115,6 +115,38 @@ impl CertificateRecord {
     }
 }
 
+#[derive(Debug)]
+pub enum APIError {
+    Network(reqwest::Error),
+    Status(reqwest::StatusCode),
+}
+
+impl Display for APIError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        match self {
+            APIError::Network(err) => Display::fmt(err, f),
+            APIError::Status(code) => match code.canonical_reason() {
+                Some(reason) => write!(f, "{} {}", code.as_u16(), reason),
+                None => write!(f, "{}", code.as_u16()),
+            },
+        }
+    }
+}
+
+impl std::error::Error for APIError {}
+
+impl From<reqwest::Error> for APIError {
+    fn from(e: reqwest::Error) -> APIError {
+        APIError::Network(e)
+    }
+}
+
+impl From<reqwest::StatusCode> for APIError {
+    fn from(e: reqwest::StatusCode) -> APIError {
+        APIError::Status(e)
+    }
+}
+
 struct BufReaderOverlap<R> {
     inner: R,
     buf: Box<[u8]>,
@@ -377,16 +409,13 @@ impl Carver {
                     }
                     let mut new = history.to_owned();
                     new.push(fp.clone());
-                    match trust_roots.test_fingerprint(&issuer_fp) {
-                        Ok(_) => {
-                            partial_chains.push(new);
-                            break;
-                            // only want this chain once, even if we have multiple equivalent roots
-                        }
-                        Err(_) => {
-                            let mut result = recurse(issuer_fp, &new, issuer_lookup, trust_roots);
-                            partial_chains.append(&mut result);
-                        }
+                    if trust_roots.test_fingerprint(&issuer_fp) {
+                        partial_chains.push(new);
+                        // only want this chain once, even if we have multiple equivalent roots
+                        break;
+                    } else {
+                        let mut result = recurse(issuer_fp, &new, issuer_lookup, trust_roots);
+                        partial_chains.append(&mut result);
                     }
                 }
                 partial_chains
@@ -434,7 +463,7 @@ impl Carver {
         let mut count_no_chain = 0;
         let mut new_fps: Vec<CertificateFingerprint> = Vec::new();
         for (fp, info) in self.map.iter() {
-            if all_roots.test_fingerprint(fp).is_ok() {
+            if all_roots.test_fingerprint(fp) {
                 // skip root CAs
                 continue;
             }
@@ -474,9 +503,9 @@ impl Carver {
             let mut any_chain = false;
             let mut any_submission_success = false;
             let mut all_submission_errors = true;
-            let mut last_submission_error: Option<Box<std::error::Error>> = None;
+            let mut last_submission_error: Option<APIError> = None;
             for log in logs.iter() {
-                if log.trust_roots.test_fingerprint(fp).is_ok() {
+                if log.trust_roots.test_fingerprint(fp) {
                     // skip root CAs
                     continue;
                 }
@@ -484,7 +513,7 @@ impl Carver {
                 for chain in chains.iter() {
                     any_chain = true;
                     match log_comms.submit_chain(&log, &chain) {
-                        Ok(Ok(_)) => {
+                        Ok(_) => {
                             if !any_submission_success {
                                 new_submission_count += 1;
                             }
@@ -501,7 +530,7 @@ impl Carver {
                             // only submit one chain
                             break;
                         }
-                        Ok(Err(status)) => {
+                        Err(APIError::Status(status)) => {
                             all_submission_errors = false; // don't want to panic on this
 
                             print!(
@@ -526,7 +555,7 @@ impl Carver {
             }
             if any_chain && all_submission_errors {
                 let error = last_submission_error.unwrap();
-                let error_desc = String::from(error.description());
+                let error_desc = error.to_string();
                 panic!(error_desc);
             }
         }
@@ -539,7 +568,7 @@ impl Carver {
 }
 
 pub trait CrtShServer {
-    fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, Box<std::error::Error>>;
+    fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, APIError>;
 }
 
 pub struct RealCrtShServer();
@@ -547,11 +576,13 @@ pub struct RealCrtShServer();
 impl CrtShServer for RealCrtShServer {
     // true: certificate has already been indexed
     // false: certificate has not been indexed
-    fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, Box<std::error::Error>> {
+    fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, APIError> {
         let url_str = format!("https://crt.sh/?q={}", fp);
         let url = Url::parse(&url_str).unwrap();
         let mut resp = reqwest::get(url)?;
-        assert!(resp.status().is_success());
+        if !resp.status().is_success() {
+            return Err(APIError::Status(resp.status()));
+        }
         let body = resp.text()?;
         match body.find("Certificate not found") {
             None => Ok(true),

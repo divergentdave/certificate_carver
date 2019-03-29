@@ -5,27 +5,16 @@ extern crate certificate_carver;
 use std::cell::RefCell;
 
 use certificate_carver::ctlog::{AddChainResponse, GetRootsResponse, LogInfo, LogServers};
-use certificate_carver::{CertificateChain, CertificateFingerprint, CrtShServer};
+use certificate_carver::{APIError, CertificateChain, CertificateFingerprint, CrtShServer};
 
 #[derive(Default)]
 pub struct MockCrtShServer();
 
 impl CrtShServer for MockCrtShServer {
-    fn check_crtsh(&self, _fp: &CertificateFingerprint) -> Result<bool, Box<std::error::Error>> {
+    fn check_crtsh(&self, _fp: &CertificateFingerprint) -> Result<bool, APIError> {
         Ok(false)
     }
 }
-
-#[derive(Debug)]
-struct MockLogError(String);
-
-impl std::fmt::Display for MockLogError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl std::error::Error for MockLogError {}
 
 #[derive(Default)]
 pub struct MockLogServers {
@@ -41,7 +30,7 @@ impl MockLogServers {
 }
 
 impl LogServers for MockLogServers {
-    fn fetch_roots_resp(&self, log: &LogInfo) -> Result<GetRootsResponse, Box<std::error::Error>> {
+    fn fetch_roots_resp(&self, log: &LogInfo) -> Result<GetRootsResponse, APIError> {
         let url_str = log.get_url().as_str();
         let json_str;
         if url_str == "https://ct.googleapis.com/pilot/" {
@@ -61,25 +50,21 @@ impl LogServers for MockLogServers {
         } else if url_str == "https://plausible.ct.nordu.net/" {
             json_str = include_str!("roots/plausible.json");
         } else {
-            return Err(Box::new(MockLogError(format!(
-                "No mock data is stored for {}",
-                url_str
-            ))));
+            panic!("No mock data is stored for {}", url_str);
         }
-        serde_json::from_str(json_str)
-            .map_err(|e: serde_json::Error| -> Box<std::error::Error> { Box::new(e) })
+        Ok(serde_json::from_str(json_str).unwrap())
     }
 
     fn submit_chain(
         &self,
         _log: &LogInfo,
         _chain: &CertificateChain,
-    ) -> Result<Result<AddChainResponse, reqwest::StatusCode>, Box<std::error::Error>> {
+    ) -> Result<AddChainResponse, APIError> {
         let resp: AddChainResponse = serde_json::from_str(
             "{\"sct_version\":0,\"id\":\"pLkJkLQYWBSHuxOizGdwCjw1mAT5G9+443fNDsgN3BA=\",\"timestamp\":1519606625707,\"extensions\":\"\",\"signature\":\"BAMARzBFAiEAmqLo0/5CaAgNZdpsBgDKFAwKgQ4g2fLfMTUe8LLEYVQCIDhUD2coHB7IOV844lDSpm5Tmfh7FGaWtCFOZnSxGYiK\"}"
-        )?;
+        ).unwrap();
         let mut count = self.add_chain_count.borrow_mut();
         *count += 1;
-        Ok(Ok(resp))
+        Ok(resp)
     }
 }
