@@ -1,5 +1,6 @@
 use untrusted;
 
+use std::hash::{Hash, Hasher};
 use std::io::Write;
 
 use encoding::all::ISO_8859_1;
@@ -142,6 +143,14 @@ impl Certificate {
     pub fn issued(&self, other: &Certificate) -> bool {
         self.subject == other.issuer
     }
+
+    pub fn get_issuer(&self) -> &NameInfo {
+        &self.issuer
+    }
+
+    pub fn get_subject(&self) -> &NameInfo {
+        &self.subject
+    }
 }
 
 impl AsRef<[u8]> for Certificate {
@@ -150,7 +159,7 @@ impl AsRef<[u8]> for Certificate {
     }
 }
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Hash, Debug)]
 pub enum NameType {
     CountryName,
     OrganizationName,
@@ -223,7 +232,7 @@ impl From<&[u8]> for NameType {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Eq, Debug)]
 pub struct NameTypeValue {
     pub bytes: Vec<u8>,
     pub name_type: NameType,
@@ -256,6 +265,25 @@ impl PartialEq for NameTypeValue {
     }
 }
 
+impl Hash for NameTypeValue {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name_type.hash(state);
+        match self.name_type {
+            NameType::UnrecognizedType => self.bytes.hash(state),
+            _ => match &self.value {
+                Some(value) => match self.name_type.matching_rule() {
+                    MatchingRule::CaseIgnoreMatch => match ldapprep_case_insensitive(&value) {
+                        Ok(prepped) => prepped.hash(state),
+                        Err(_) => self.bytes.hash(state),
+                    },
+                    MatchingRule::Unknown => self.bytes.hash(state),
+                },
+                None => self.bytes.hash(state),
+            },
+        }
+    }
+}
+
 fn parse_directory_string(raw: &[u8]) -> Option<String> {
     let input = untrusted::Input::from(raw);
     if let Ok((tag, inner)) = input.read_all(Error::BadDERString, |value_der| {
@@ -279,7 +307,7 @@ fn parse_directory_string(raw: &[u8]) -> Option<String> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Eq, Debug)]
 pub struct RelativeDistinguishedName {
     pub attribs: Vec<NameTypeValue>,
 }
@@ -305,9 +333,22 @@ impl PartialEq for RelativeDistinguishedName {
     }
 }
 
-impl Eq for RelativeDistinguishedName {}
+impl Hash for RelativeDistinguishedName {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.attribs.len().hash(state);
+        if self.attribs.len() == 1 {
+            self.attribs[0].hash(state);
+        } else if self.attribs.len() > 1 {
+            let mut sorted = self.attribs.clone();
+            sorted.sort_by(|a, b| a.bytes.cmp(&b.bytes));
+            for attrib in sorted.iter() {
+                attrib.hash(state);
+            }
+        }
+    }
+}
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NameInfo {
     bytes: Vec<u8>,
     rdns: Result<Vec<RelativeDistinguishedName>, Error>,
@@ -425,6 +466,15 @@ impl PartialEq for NameInfo {
         match (&self.rdns, &other.rdns) {
             (Ok(self_rdns), Ok(other_rdns)) => self_rdns == other_rdns,
             _ => self.bytes == other.bytes,
+        }
+    }
+}
+
+impl Hash for NameInfo {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match &self.rdns {
+            Ok(rdns) => rdns.hash(state),
+            Err(_) => self.bytes.hash(state),
         }
     }
 }
