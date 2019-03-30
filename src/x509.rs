@@ -1,5 +1,6 @@
 use untrusted;
 
+use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 use std::io::Write;
 
@@ -159,7 +160,7 @@ impl AsRef<[u8]> for Certificate {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Hash, Debug)]
+#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug)]
 pub enum NameType {
     CountryName,
     OrganizationName,
@@ -241,27 +242,48 @@ pub struct NameTypeValue {
 
 impl PartialEq for NameTypeValue {
     fn eq(&self, other: &NameTypeValue) -> bool {
-        if self.name_type != other.name_type {
-            return false;
-        }
-        if self.name_type == NameType::UnrecognizedType {
-            return self.bytes == other.bytes;
-        }
-        match (&self.value, &other.value) {
-            (Some(self_value), Some(other_value)) => match self.name_type.matching_rule() {
-                MatchingRule::CaseIgnoreMatch => {
-                    match (
-                        ldapprep_case_insensitive(&self_value),
-                        ldapprep_case_insensitive(&other_value),
-                    ) {
-                        (Ok(self_prepped), Ok(other_prepped)) => self_prepped == other_prepped,
-                        _ => self.bytes == other.bytes,
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Ord for NameTypeValue {
+    fn cmp(&self, other: &NameTypeValue) -> Ordering {
+        match self.name_type.cmp(&other.name_type) {
+            Ordering::Equal => {
+                if self.name_type == NameType::UnrecognizedType {
+                    self.bytes.cmp(&other.bytes)
+                } else {
+                    match (&self.value, &other.value) {
+                        (Some(self_value), Some(other_value)) => {
+                            match self.name_type.matching_rule() {
+                                MatchingRule::CaseIgnoreMatch => {
+                                    match (
+                                        ldapprep_case_insensitive(&self_value),
+                                        ldapprep_case_insensitive(&other_value),
+                                    ) {
+                                        (Ok(self_prepped), Ok(other_prepped)) => {
+                                            self_prepped.cmp(&other_prepped)
+                                        }
+                                        _ => self.bytes.cmp(&other.bytes),
+                                    }
+                                }
+                                MatchingRule::Unknown => self.bytes.cmp(&other.bytes),
+                            }
+                        }
+                        (Some(_), None) => Ordering::Greater,
+                        (None, Some(_)) => Ordering::Less,
+                        (None, None) => Ordering::Equal,
                     }
                 }
-                MatchingRule::Unknown => self.bytes == other.bytes,
-            },
-            _ => self.bytes == other.bytes,
+            }
+            result => result,
         }
+    }
+}
+
+impl PartialOrd for NameTypeValue {
+    fn partial_cmp(&self, other: &NameTypeValue) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -340,7 +362,7 @@ impl Hash for RelativeDistinguishedName {
             self.attribs[0].hash(state);
         } else if self.attribs.len() > 1 {
             let mut sorted = self.attribs.clone();
-            sorted.sort_by(|a, b| a.bytes.cmp(&b.bytes));
+            sorted.sort();
             for attrib in sorted.iter() {
                 attrib.hash(state);
             }
