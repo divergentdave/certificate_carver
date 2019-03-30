@@ -61,15 +61,20 @@ pub struct Certificate {
     bytes: Vec<u8>,
     issuer: NameInfo,
     subject: NameInfo,
+    fp: CertificateFingerprint,
 }
 
 impl Certificate {
     pub fn parse(bytes: Vec<u8>) -> Result<Certificate, Error> {
         let (issuer, subject) = Certificate::parse_cert_names(bytes.as_ref())?;
+        let mut arr: [u8; 32] = Default::default();
+        arr.copy_from_slice(&Sha256::digest(&bytes));
+        let fp = CertificateFingerprint(arr);
         Ok(Certificate {
             bytes,
             issuer,
             subject,
+            fp,
         })
     }
 
@@ -127,11 +132,7 @@ impl Certificate {
     }
 
     pub fn fingerprint(&self) -> CertificateFingerprint {
-        let mut digest = Sha256::new();
-        digest.input(self.as_ref());
-        let mut arr: [u8; 32] = Default::default();
-        arr.copy_from_slice(&digest.result());
-        CertificateFingerprint(arr)
+        self.fp.clone()
     }
 
     pub fn format_issuer_subject(&self, f: &mut Write) -> std::io::Result<()> {
