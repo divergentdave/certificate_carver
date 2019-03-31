@@ -6,7 +6,7 @@ use std::io::Cursor;
 
 use certificate_carver::ctlog::LogInfo;
 use certificate_carver::x509::Certificate;
-use certificate_carver::{Carver, CertificateBytes};
+use certificate_carver::Carver;
 
 use crate::utils::decode_pem;
 
@@ -34,7 +34,7 @@ fn test_cross_signatures() {
         include_bytes!("files/bespoke/intermediate_a/intermediate_b_signed_by_intermediate_a.crt");
     let cert4_pem =
         include_bytes!("files/bespoke/intermediate_b/intermediate_a_signed_by_intermediate_b.crt");
-    let cert4_fp = CertificateBytes(decode_pem(cert4_pem)).fingerprint();
+    let cert4_parsed = Certificate::parse(decode_pem(cert4_pem)).unwrap();
     let mut root = Cursor::new(root_pem.to_vec());
     let mut cert1 = Cursor::new(cert1_pem.to_vec());
     let mut cert2 = Cursor::new(cert2_pem.to_vec());
@@ -45,13 +45,12 @@ fn test_cross_signatures() {
     carver.scan_file_object(&mut cert2, "cert2");
     carver.scan_file_object(&mut cert3, "cert3");
     carver.scan_file_object(&mut cert4, "cert4");
-    assert_eq!(carver.map.len(), 5);
-    let issuer_lookup = carver.build_issuer_lookup();
+    assert_eq!(carver.fp_map.len(), 5);
 
     let mut log = LogInfo::new("http://127.0.0.0/");
     log.trust_roots
-        .add_roots(&[CertificateBytes(decode_pem(root_pem))]);
+        .add_roots(&[Certificate::parse(decode_pem(root_pem)).unwrap()]);
 
-    let chains = carver.build_chains(&cert4_fp, &issuer_lookup, &log.trust_roots);
+    let chains = carver.build_chains(&cert4_parsed, &log.trust_roots);
     assert_eq!(chains.len(), 2);
 }

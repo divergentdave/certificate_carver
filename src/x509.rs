@@ -1,12 +1,14 @@
 use untrusted;
 
+use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
 use std::io::Write;
 
 use encoding::all::ISO_8859_1;
 use encoding::{DecoderTrap, Encoding};
 use sha2::{Digest, Sha256};
 
-use crate::CertificateFingerprint;
+use crate::{CertificateBytes, CertificateFingerprint};
 
 use crate::ldapprep::ldapprep_case_insensitive;
 
@@ -56,18 +58,23 @@ const NAME_ATTRIBUTES_DESCRIPTIONS: [(NameType, &str); 14] = [
 
 #[derive(Clone)]
 pub struct Certificate {
-    bytes: Vec<u8>,
+    bytes: CertificateBytes,
     issuer: NameInfo,
     subject: NameInfo,
+    fp: CertificateFingerprint,
 }
 
 impl Certificate {
-    pub fn parse(bytes: Vec<u8>) -> Result<Certificate, Error> {
+    pub fn parse(bytes: CertificateBytes) -> Result<Certificate, Error> {
         let (issuer, subject) = Certificate::parse_cert_names(bytes.as_ref())?;
+        let mut arr: [u8; 32] = Default::default();
+        arr.copy_from_slice(&Sha256::digest(bytes.as_ref()));
+        let fp = CertificateFingerprint(arr);
         Ok(Certificate {
             bytes,
             issuer,
             subject,
+            fp,
         })
     }
 
@@ -125,11 +132,7 @@ impl Certificate {
     }
 
     pub fn fingerprint(&self) -> CertificateFingerprint {
-        let mut digest = Sha256::new();
-        digest.input(self.as_ref());
-        let mut arr: [u8; 32] = Default::default();
-        arr.copy_from_slice(&digest.result());
-        CertificateFingerprint(arr)
+        self.fp
     }
 
     pub fn format_issuer_subject(&self, f: &mut Write) -> std::io::Result<()> {
@@ -142,6 +145,18 @@ impl Certificate {
     pub fn issued(&self, other: &Certificate) -> bool {
         self.subject == other.issuer
     }
+
+    pub fn get_issuer(&self) -> &NameInfo {
+        &self.issuer
+    }
+
+    pub fn get_subject(&self) -> &NameInfo {
+        &self.subject
+    }
+
+    pub fn get_bytes(&self) -> &CertificateBytes {
+        &self.bytes
+    }
 }
 
 impl AsRef<[u8]> for Certificate {
@@ -150,7 +165,7 @@ impl AsRef<[u8]> for Certificate {
     }
 }
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug)]
 pub enum NameType {
     CountryName,
     OrganizationName,
@@ -223,7 +238,7 @@ impl From<&[u8]> for NameType {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Eq, Debug)]
 pub struct NameTypeValue {
     pub bytes: Vec<u8>,
     pub name_type: NameType,
@@ -232,26 +247,66 @@ pub struct NameTypeValue {
 
 impl PartialEq for NameTypeValue {
     fn eq(&self, other: &NameTypeValue) -> bool {
-        if self.name_type != other.name_type {
-            return false;
-        }
-        if self.name_type == NameType::UnrecognizedType {
-            return self.bytes == other.bytes;
-        }
-        match (&self.value, &other.value) {
-            (Some(self_value), Some(other_value)) => match self.name_type.matching_rule() {
-                MatchingRule::CaseIgnoreMatch => {
-                    match (
-                        ldapprep_case_insensitive(&self_value),
-                        ldapprep_case_insensitive(&other_value),
-                    ) {
-                        (Ok(self_prepped), Ok(other_prepped)) => self_prepped == other_prepped,
-                        _ => self.bytes == other.bytes,
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Ord for NameTypeValue {
+    fn cmp(&self, other: &NameTypeValue) -> Ordering {
+        match self.name_type.cmp(&other.name_type) {
+            Ordering::Equal => {
+                if self.name_type == NameType::UnrecognizedType {
+                    self.bytes.cmp(&other.bytes)
+                } else {
+                    match (&self.value, &other.value) {
+                        (Some(self_value), Some(other_value)) => {
+                            match self.name_type.matching_rule() {
+                                MatchingRule::CaseIgnoreMatch => {
+                                    match (
+                                        ldapprep_case_insensitive(&self_value),
+                                        ldapprep_case_insensitive(&other_value),
+                                    ) {
+                                        (Ok(self_prepped), Ok(other_prepped)) => {
+                                            self_prepped.cmp(&other_prepped)
+                                        }
+                                        _ => self.bytes.cmp(&other.bytes),
+                                    }
+                                }
+                                MatchingRule::Unknown => self.bytes.cmp(&other.bytes),
+                            }
+                        }
+                        (Some(_), None) => Ordering::Greater,
+                        (None, Some(_)) => Ordering::Less,
+                        (None, None) => Ordering::Equal,
                     }
                 }
-                MatchingRule::Unknown => self.bytes == other.bytes,
+            }
+            result => result,
+        }
+    }
+}
+
+impl PartialOrd for NameTypeValue {
+    fn partial_cmp(&self, other: &NameTypeValue) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Hash for NameTypeValue {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name_type.hash(state);
+        match self.name_type {
+            NameType::UnrecognizedType => self.bytes.hash(state),
+            _ => match &self.value {
+                Some(value) => match self.name_type.matching_rule() {
+                    MatchingRule::CaseIgnoreMatch => match ldapprep_case_insensitive(&value) {
+                        Ok(prepped) => prepped.hash(state),
+                        Err(_) => self.bytes.hash(state),
+                    },
+                    MatchingRule::Unknown => self.bytes.hash(state),
+                },
+                None => self.bytes.hash(state),
             },
-            _ => self.bytes == other.bytes,
         }
     }
 }
@@ -279,7 +334,7 @@ fn parse_directory_string(raw: &[u8]) -> Option<String> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Eq, Debug)]
 pub struct RelativeDistinguishedName {
     pub attribs: Vec<NameTypeValue>,
 }
@@ -305,9 +360,22 @@ impl PartialEq for RelativeDistinguishedName {
     }
 }
 
-impl Eq for RelativeDistinguishedName {}
+impl Hash for RelativeDistinguishedName {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.attribs.len().hash(state);
+        if self.attribs.len() == 1 {
+            self.attribs[0].hash(state);
+        } else if self.attribs.len() > 1 {
+            let mut sorted = self.attribs.clone();
+            sorted.sort();
+            for attrib in sorted.iter() {
+                attrib.hash(state);
+            }
+        }
+    }
+}
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NameInfo {
     bytes: Vec<u8>,
     rdns: Result<Vec<RelativeDistinguishedName>, Error>,
@@ -429,6 +497,15 @@ impl PartialEq for NameInfo {
     }
 }
 
+impl Hash for NameInfo {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match &self.rdns {
+            Ok(rdns) => rdns.hash(state),
+            Err(_) => self.bytes.hash(state),
+        }
+    }
+}
+
 impl Eq for NameInfo {}
 
 #[derive(Clone, Copy, Debug)]
@@ -445,8 +522,6 @@ pub enum Error {
     BadDERSubject,
     BadDERSPKI,
     BadDERExtensions,
-    BadDERSignatureAlgorithm,
-    BadDERSignature,
     BadDERDistinguishedNameExtraData,
     BadDERRelativeDistinguishedName,
     BadDERRelativeDistinguishedNameExtraData,
@@ -458,6 +533,37 @@ pub enum Error {
     BadDERAlgorithm,
     BadDERSignature2,
 }
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        match self {
+            Error::SerialNumberNotInteger => write!(f, "Certificate serial number is not an integer"),
+            Error::BadDERCertificate => write!(f, "DER error encountered while parsing Certificate"),
+            Error::BadDERCertificateExtraData => write!(f, "DER error encountered while parsing Certificate due to extra data"),
+            Error::BadDERTBSCertificateWrongTag => write!(f, "DER error encountered while parsing TBSCertificate due to an incorrect tag"),
+            Error::BadDERTBSCertificateExtraData => write!(f, "DER error encountered while parsing TBSCertificate due to extra data"),
+            Error::BadDERSerialNumber => write!(f, "DER error encountered while parsing serial number"),
+            Error::BadDERSignatureInTBS => write!(f, "DER error encountered while parsing signature informatin in TBSCertificate"),
+            Error::BadDERIssuer => write!(f, "DER error encountered while parsing issuer"),
+            Error::BadDERValidity => write!(f, "DER error encountered while parsing validity"),
+            Error::BadDERSubject => write!(f, "DER error encountered while parsing subject"),
+            Error::BadDERSPKI => write!(f, "DER error encountered while parsing SubjectPublicKeyIdentifier"),
+            Error::BadDERExtensions => write!(f, "DER error encountered while parsing extensions"),
+            Error::BadDERDistinguishedNameExtraData => write!(f, "DER error encountered while parsing DistinguishedName due to extra data"),
+            Error::BadDERRelativeDistinguishedName => write!(f, "DER error encountered while parsing RelativeDistinguishedName"),
+            Error::BadDERRelativeDistinguishedNameExtraData => write!(f, "DER error encountered while parsing RelativeDistinguishedName due to extra data"),
+            Error::BadDERRDNAttribute => write!(f, "DER error encountered while parsing RelativeDistinguishedName Attribute"),
+            Error::BadDERRDNAttributeExtraData => write!(f, "DER error encountered while parsing RelativeDistinguishedName Attribute due to extra data"),
+            Error::BadDERRDNType => write!(f, "DER error encountered while parsing RelativeDistinguishedName Type"),
+            Error::BadDERString => write!(f, "DER error encountered while parsing a string"),
+            Error::BadDERRDNValue => write!(f, "DER error encountered while parsing RelativeDistinguishedName Value"),
+            Error::BadDERAlgorithm => write!(f, "DER error encountered while parsing outer signature algorithm"),
+            Error::BadDERSignature2 => write!(f, "DER error encountered while parsing signature value"),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
 
 #[inline(always)]
 fn expect_tag_and_get_value<'a>(
