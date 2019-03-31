@@ -2,6 +2,7 @@ extern crate base64;
 extern crate copy_in_place;
 extern crate encoding;
 extern crate hex;
+extern crate openssl;
 extern crate regex;
 extern crate reqwest;
 extern crate sha2;
@@ -92,13 +93,16 @@ pub struct CertificateChain(pub Vec<CertificateBytes>);
 pub struct CertificateRecord {
     pub paths: Vec<String>,
     pub cert: Certificate,
+    pub openssl_cert: Option<openssl::x509::X509>,
 }
 
 impl CertificateRecord {
     fn new(cert: Certificate) -> CertificateRecord {
+        let openssl_cert = openssl::x509::X509::from_der(cert.as_ref()).ok();
         CertificateRecord {
             paths: Vec::new(),
             cert,
+            openssl_cert,
         }
     }
 }
