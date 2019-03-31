@@ -24,7 +24,6 @@ pub mod x509;
 use copy_in_place::copy_in_place;
 use regex::bytes::Regex;
 use reqwest::Url;
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
@@ -80,14 +79,6 @@ impl Debug for CertificateFingerprint {
 
 #[derive(Clone)]
 pub struct CertificateBytes(pub Vec<u8>);
-
-impl CertificateBytes {
-    pub fn fingerprint(&self) -> CertificateFingerprint {
-        let mut arr: [u8; 32] = Default::default();
-        arr.copy_from_slice(&Sha256::digest(self.as_ref()));
-        CertificateFingerprint(arr)
-    }
-}
 
 impl AsRef<[u8]> for CertificateBytes {
     fn as_ref(&self) -> &[u8] {
