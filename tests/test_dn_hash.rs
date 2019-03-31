@@ -94,6 +94,7 @@ fn test_hashes_ignore_case() {
     let cert1_subject_hash = get_hash(cert1_subject);
     let cert2_issuer_hash = get_hash(cert2_issuer);
 
-    assert_ne!(cert1_subject.as_ref(), cert2_issuer.as_ref());
-    assert_eq!(cert1_subject_hash, cert2_issuer_hash);
+    assert_ne!(cert1_subject.as_ref(), cert2_issuer.as_ref()); // DER encoding differs
+    assert_eq!(cert1_subject, cert2_issuer); // same names modulo case differences
+    assert_eq!(cert1_subject_hash, cert2_issuer_hash); // hashes should match
 }
