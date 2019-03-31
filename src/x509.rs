@@ -1,12 +1,10 @@
-use untrusted;
-
-use std::cmp::Ordering;
-use std::hash::{Hash, Hasher};
-use std::io::Write;
-
 use encoding::all::ISO_8859_1;
 use encoding::{DecoderTrap, Encoding};
 use sha2::{Digest, Sha256};
+use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
+use std::io::Write;
+use untrusted;
 
 use crate::{CertificateBytes, CertificateFingerprint};
 
@@ -27,6 +25,8 @@ enum Tag {
     Utf8String = 0x0C,
     PrintableString = 0x13,
     TeletexString = 0x14,
+    UTCTime = 0x17,
+    GeneralizedTime = 0x18,
     Sequence = CONSTRUCTED | 0x10, // 0x30
     Set = CONSTRUCTED | 0x11,      // 0x31
     // UTCTime = 0x17,
@@ -59,26 +59,28 @@ const NAME_ATTRIBUTES_DESCRIPTIONS: [(NameType, &str); 14] = [
 #[derive(Clone)]
 pub struct Certificate {
     bytes: CertificateBytes,
+    fp: CertificateFingerprint,
+    not_after_year: Year,
     issuer: NameInfo,
     subject: NameInfo,
-    fp: CertificateFingerprint,
 }
 
 impl Certificate {
     pub fn parse(bytes: CertificateBytes) -> Result<Certificate, Error> {
-        let (issuer, subject) = Certificate::parse_cert_names(bytes.as_ref())?;
+        let (issuer, subject, not_after_year) = Certificate::parse_cert_contents(bytes.as_ref())?;
         let mut arr: [u8; 32] = Default::default();
         arr.copy_from_slice(&Sha256::digest(bytes.as_ref()));
         let fp = CertificateFingerprint(arr);
         Ok(Certificate {
             bytes,
+            fp,
+            not_after_year,
             issuer,
             subject,
-            fp,
         })
     }
 
-    fn parse_cert_names(bytes: &[u8]) -> Result<(NameInfo, NameInfo), Error> {
+    fn parse_cert_contents(bytes: &[u8]) -> Result<(NameInfo, NameInfo, Year), Error> {
         let cert_der = untrusted::Input::from(bytes);
         let tbs_der = cert_der.read_all(Error::BadDERCertificateExtraData, |cert_der| {
             nested(
@@ -89,46 +91,59 @@ impl Certificate {
                 parse_signed_data,
             )
         })?;
-        let (issuer, subject) = tbs_der.read_all(Error::BadDERCertificate, |tbs_der| {
-            let (first_tag, _first_value) =
-                read_tag_and_get_value(tbs_der, Error::BadDERSerialNumber)?;
-            let next_tag = if (first_tag as usize) == (Tag::ContextSpecificConstructed0 as usize) {
-                // skip version number, if present
-                let (next_tag, _next_value) =
+        let (issuer, subject, not_after_year) =
+            tbs_der.read_all(Error::BadDERCertificate, |tbs_der| {
+                let (first_tag, _first_value) =
                     read_tag_and_get_value(tbs_der, Error::BadDERSerialNumber)?;
-                next_tag
-            } else {
-                first_tag
-            };
+                let next_tag =
+                    if (first_tag as usize) == (Tag::ContextSpecificConstructed0 as usize) {
+                        // skip version number, if present
+                        let (next_tag, _next_value) =
+                            read_tag_and_get_value(tbs_der, Error::BadDERSerialNumber)?;
+                        next_tag
+                    } else {
+                        first_tag
+                    };
 
-            // skip serial number, either the first or second tag
-            if (next_tag as usize) != (Tag::Integer as usize) {
-                return Err(Error::SerialNumberNotInteger);
-            }
+                // skip serial number, either the first or second tag
+                if (next_tag as usize) != (Tag::Integer as usize) {
+                    return Err(Error::SerialNumberNotInteger);
+                }
 
-            skip(tbs_der, Tag::Sequence, Error::BadDERSignatureInTBS)?;
+                skip(tbs_der, Tag::Sequence, Error::BadDERSignatureInTBS)?;
 
-            let issuer = expect_tag_and_get_value(tbs_der, Tag::Sequence, Error::BadDERIssuer)?;
-            let issuer = copy_input(&issuer);
+                let issuer = expect_tag_and_get_value(tbs_der, Tag::Sequence, Error::BadDERIssuer)?;
+                let issuer = copy_input(&issuer);
 
-            skip(tbs_der, Tag::Sequence, Error::BadDERValidity)?;
-
-            let subject = expect_tag_and_get_value(tbs_der, Tag::Sequence, Error::BadDERSubject)?;
-            let subject = copy_input(&subject);
-
-            skip(tbs_der, Tag::Sequence, Error::BadDERSPKI)?;
-
-            if !tbs_der.at_end() {
-                skip(
+                let not_after_year = nested(
                     tbs_der,
-                    Tag::ContextSpecificConstructed3,
-                    Error::BadDERExtensions,
+                    Tag::Sequence,
+                    Error::BadDERValidity,
+                    Error::BadDERValidityExtraData,
+                    parse_validity,
                 )?;
-            }
 
-            Ok((issuer, subject))
-        })?;
-        Ok((NameInfo::new(issuer), NameInfo::new(subject)))
+                let subject =
+                    expect_tag_and_get_value(tbs_der, Tag::Sequence, Error::BadDERSubject)?;
+                let subject = copy_input(&subject);
+
+                skip(tbs_der, Tag::Sequence, Error::BadDERSPKI)?;
+
+                if !tbs_der.at_end() {
+                    skip(
+                        tbs_der,
+                        Tag::ContextSpecificConstructed3,
+                        Error::BadDERExtensions,
+                    )?;
+                }
+
+                Ok((issuer, subject, not_after_year))
+            })?;
+        Ok((
+            NameInfo::new(issuer),
+            NameInfo::new(subject),
+            not_after_year,
+        ))
     }
 
     pub fn fingerprint(&self) -> CertificateFingerprint {
@@ -156,6 +171,10 @@ impl Certificate {
 
     pub fn get_bytes(&self) -> &CertificateBytes {
         &self.bytes
+    }
+
+    pub fn get_not_after_year(&self) -> u64 {
+        self.not_after_year.0
     }
 }
 
@@ -519,6 +538,9 @@ pub enum Error {
     BadDERSignatureInTBS,
     BadDERIssuer,
     BadDERValidity,
+    BadDERValidityExtraData,
+    BadDERTime,
+    BadDERTimeValue,
     BadDERSubject,
     BadDERSPKI,
     BadDERExtensions,
@@ -546,6 +568,9 @@ impl std::fmt::Display for Error {
             Error::BadDERSignatureInTBS => write!(f, "DER error encountered while parsing signature informatin in TBSCertificate"),
             Error::BadDERIssuer => write!(f, "DER error encountered while parsing issuer"),
             Error::BadDERValidity => write!(f, "DER error encountered while parsing validity"),
+            Error::BadDERValidityExtraData => write!(f, "DER error encountered while parsing validity due to extra data"),
+            Error::BadDERTime => write!(f, "DER error encountered while parsing a time object"),
+            Error::BadDERTimeValue => write!(f, "DER error encountered while parsing a time value"),
             Error::BadDERSubject => write!(f, "DER error encountered while parsing subject"),
             Error::BadDERSPKI => write!(f, "DER error encountered while parsing SubjectPublicKeyIdentifier"),
             Error::BadDERExtensions => write!(f, "DER error encountered while parsing extensions"),
@@ -663,3 +688,48 @@ fn bit_string_with_no_unused_bits<'a>(
         Ok(value.skip_to_end())
     })
 }
+
+fn parse_validity(input: &mut untrusted::Reader) -> Result<Year, Error> {
+    parse_time(input)?;
+    parse_time(input)
+}
+
+fn parse_time(input: &mut untrusted::Reader) -> Result<Year, Error> {
+    let (tag, value) = read_tag_and_get_value(input, Error::BadDERTime)?;
+
+    fn read_digit(inner: &mut untrusted::Reader) -> Result<u64, Error> {
+        let b = inner.read_byte().map_err(|_| Error::BadDERTimeValue)?;
+        if b >= 0x30 && b <= 0x39 {
+            Ok((b - 0x30) as u64)
+        } else {
+            Err(Error::BadDERTimeValue)
+        }
+    }
+
+    fn read_two_digits(inner: &mut untrusted::Reader) -> Result<u64, Error> {
+        let high = read_digit(inner)?;
+        let low = read_digit(inner)?;
+        let value = high * 10 + low;
+        Ok(value)
+    }
+
+    let mut input = untrusted::Reader::new(value);
+    let year = if (tag as usize) == (Tag::UTCTime as usize) {
+        let yy = read_two_digits(&mut input)?;
+        if yy >= 50 {
+            1900 + yy
+        } else {
+            2000 + yy
+        }
+    } else if (tag as usize) == (Tag::GeneralizedTime as usize) {
+        let high = read_two_digits(&mut input)?;
+        let low = read_two_digits(&mut input)?;
+        high * 100 + low
+    } else {
+        return Err(Error::BadDERTime);
+    };
+    // Ignore the rest of the time
+    Ok(Year(year))
+}
+#[derive(Clone)]
+pub struct Year(u64);
