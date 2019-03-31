@@ -1,5 +1,5 @@
 use crate::{
-    pem_base64_decode, pem_base64_encode, APIError, CertificateBytes, CertificateChain,
+    pem_base64_decode, pem_base64_encode, APIError, Certificate, CertificateChain,
     CertificateFingerprint,
 };
 use reqwest::Url;
@@ -26,7 +26,7 @@ pub struct AddChainResponse {
 
 pub struct LogInfo {
     url: Url,
-    pub roots: Vec<CertificateBytes>,
+    pub roots: Vec<Certificate>,
     pub trust_roots: TrustRoots,
 }
 
@@ -44,7 +44,13 @@ impl LogInfo {
         let mut vec = Vec::new();
         for encoded in body.certificates {
             let bytes = pem_base64_decode(&encoded).unwrap();
-            vec.push(CertificateBytes(bytes));
+            match Certificate::parse(bytes) {
+                Ok(cert) => vec.push(cert),
+                Err(_) => println!(
+                    "Warning: Couldn't parse a trusted root certificate from {}",
+                    self.url
+                ),
+            }
         }
         self.roots = vec;
         self.trust_roots.add_roots(&self.roots);
@@ -71,7 +77,7 @@ impl LogServers for RealLogServers {
     fn fetch_roots_resp(&self, log: &LogInfo) -> Result<GetRootsResponse, APIError> {
         let url = log.get_url().join("ct/v1/get-roots").unwrap();
         let mut resp = reqwest::get(url)?;
-        resp.json().map_err(|e| APIError::Network(e))
+        resp.json().map_err(APIError::Network)
     }
 
     fn submit_chain(
@@ -108,7 +114,7 @@ impl TrustRoots {
         }
     }
 
-    pub fn add_roots(&mut self, roots: &[CertificateBytes]) {
+    pub fn add_roots(&mut self, roots: &[Certificate]) {
         for root in roots.iter() {
             let fp = root.fingerprint();
             self.root_fps.insert(fp);

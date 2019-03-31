@@ -21,8 +21,8 @@ fn main() {
 
     let mut match_count = 0;
     let mut mismatch_count = 0;
-    for (_fp, info1) in carver.map.iter() {
-        for (_fp, info2) in carver.map.iter() {
+    for (_fp, info1) in carver.fp_map.iter() {
+        for (_fp, info2) in carver.fp_map.iter() {
             let issued = info1.cert.issued(&info2.cert);
 
             let mut hash1 = DefaultHasher::new();

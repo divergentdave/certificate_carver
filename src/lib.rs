@@ -35,7 +35,7 @@ use walkdir::WalkDir;
 use zip::read::ZipArchive;
 
 use crate::ctlog::{LogInfo, LogServers, TrustRoots};
-use crate::x509::Certificate;
+use crate::x509::{Certificate, NameInfo};
 
 const ZIP_MAGIC: [u8; 4] = [0x50, 0x4b, 3, 4];
 
@@ -83,10 +83,8 @@ pub struct CertificateBytes(pub Vec<u8>);
 
 impl CertificateBytes {
     pub fn fingerprint(&self) -> CertificateFingerprint {
-        let mut digest = Sha256::new();
-        digest.input(self.as_ref());
         let mut arr: [u8; 32] = Default::default();
-        arr.copy_from_slice(&digest.result());
+        arr.copy_from_slice(&Sha256::digest(self.as_ref()));
         CertificateFingerprint(arr)
     }
 }
@@ -101,15 +99,13 @@ pub struct CertificateChain(pub Vec<CertificateBytes>);
 
 pub struct CertificateRecord {
     pub paths: Vec<String>,
-    pub der: CertificateBytes,
     pub cert: Certificate,
 }
 
 impl CertificateRecord {
-    fn new(der: &CertificateBytes, cert: Certificate) -> CertificateRecord {
+    fn new(cert: Certificate) -> CertificateRecord {
         CertificateRecord {
             paths: Vec::new(),
-            der: der.clone(),
             cert,
         }
     }
@@ -196,23 +192,30 @@ impl<R: Read> BufReaderOverlap<R> {
 
 pub struct Carver {
     pub log_urls: Vec<String>,
-    pub map: HashMap<CertificateFingerprint, CertificateRecord>,
+    pub fp_map: HashMap<CertificateFingerprint, CertificateRecord>,
+    pub subject_map: HashMap<NameInfo, Vec<Certificate>>,
 }
 
 impl Carver {
     pub fn new(log_urls: Vec<String>) -> Carver {
         Carver {
             log_urls,
-            map: HashMap::new(),
+            fp_map: HashMap::new(),
+            subject_map: HashMap::new(),
         }
     }
 
     pub fn add_cert(&mut self, der: &CertificateBytes, path: &str) {
         if let Ok(cert) = Certificate::parse(der.0.clone()) {
-            let digest = der.fingerprint();
-            let entry = self.map.entry(digest);
-            let info = entry.or_insert_with(|| CertificateRecord::new(&der, cert));
+            let digest = cert.fingerprint();
+            let entry = self.fp_map.entry(digest);
+            let info = entry.or_insert_with(|| CertificateRecord::new(cert.clone()));
             info.paths.push(String::from(path));
+
+            let subject = cert.get_subject().clone();
+            let entry = self.subject_map.entry(subject);
+            let cert_vec = entry.or_insert_with(Vec::new);
+            cert_vec.push(cert);
         }
     }
 
@@ -360,46 +363,24 @@ impl Carver {
         }
     }
 
-    pub fn build_issuer_lookup(
-        &self,
-    ) -> HashMap<CertificateFingerprint, Vec<CertificateFingerprint>> {
-        // TODO: could use a hashmap over name der bytes to avoid calling issued() O(n^2) times
-        let mut lookup: HashMap<CertificateFingerprint, Vec<CertificateFingerprint>> =
-            HashMap::new();
-        for (issuer_fp, issuer_info) in self.map.iter() {
-            let issuer = &issuer_info.cert;
-            for (subject_fp, subject_info) in self.map.iter() {
-                if issuer_fp == subject_fp {
-                    continue;
-                }
-                let subject = &subject_info.cert;
-                if issuer.issued(subject) {
-                    let issuer_fps = lookup.entry(subject_fp.clone()).or_insert_with(Vec::new);
-                    issuer_fps.push(issuer_fp.clone());
-                }
-            }
-        }
-        lookup
-    }
-
     pub fn build_chains(
         &self,
-        leaf_fp: &CertificateFingerprint,
-        issuer_lookup: &HashMap<CertificateFingerprint, Vec<CertificateFingerprint>>,
+        leaf: &Certificate,
         trust_roots: &TrustRoots,
     ) -> Vec<CertificateChain> {
         fn recurse<'a>(
-            fp: &'a CertificateFingerprint,
+            cert: &'a Certificate,
             history: &[CertificateFingerprint],
-            issuer_lookup: &'a HashMap<CertificateFingerprint, Vec<CertificateFingerprint>>,
+            subject_map: &'a HashMap<NameInfo, Vec<Certificate>>,
             trust_roots: &TrustRoots,
         ) -> Vec<Vec<CertificateFingerprint>> {
-            if let Some(issuer_fps) = issuer_lookup.get(fp) {
+            if let Some(issuer_certs) = subject_map.get(cert.get_issuer()) {
                 let mut partial_chains: Vec<Vec<CertificateFingerprint>> = Vec::new();
-                for issuer_fp in issuer_fps.iter() {
+                for issuer_cert in issuer_certs.iter() {
+                    let issuer_fp = issuer_cert.fingerprint();
                     let mut in_history = false;
                     for history_fp in history.iter() {
-                        if issuer_fp == history_fp {
+                        if issuer_fp == *history_fp {
                             in_history = true;
                             break;
                         }
@@ -408,13 +389,13 @@ impl Carver {
                         continue;
                     }
                     let mut new = history.to_owned();
-                    new.push(fp.clone());
+                    new.push(cert.fingerprint());
                     if trust_roots.test_fingerprint(&issuer_fp) {
                         partial_chains.push(new);
                         // only want this chain once, even if we have multiple equivalent roots
                         break;
                     } else {
-                        let mut result = recurse(issuer_fp, &new, issuer_lookup, trust_roots);
+                        let mut result = recurse(&issuer_cert, &new, subject_map, trust_roots);
                         partial_chains.append(&mut result);
                     }
                 }
@@ -423,11 +404,16 @@ impl Carver {
                 Vec::new()
             }
         }
-        let fp_chains = recurse(leaf_fp, &Vec::new(), issuer_lookup, trust_roots);
+        let fp_chains = recurse(leaf, &Vec::new(), &self.subject_map, trust_roots);
         fp_chains
             .iter()
             .map(|fp_chain| {
-                CertificateChain(fp_chain.iter().map(|fp| self.map[fp].der.clone()).collect())
+                CertificateChain(
+                    fp_chain
+                        .iter()
+                        .map(|fp| self.fp_map[fp].cert.get_bytes().clone())
+                        .collect(),
+                )
             })
             .collect()
     }
@@ -442,8 +428,8 @@ impl Carver {
             let mut log = LogInfo::new(log_url);
             match log.fetch_roots(log_comms) {
                 Ok(_) => {
-                    for root_der in &log.roots[..] {
-                        self.add_cert(root_der, "log roots");
+                    for root_cert in &log.roots[..] {
+                        self.add_cert(root_cert.get_bytes(), "log roots");
                     }
                     all_roots.add_roots(&log.roots);
                     logs.push(log);
@@ -454,13 +440,11 @@ impl Carver {
             }
         }
 
-        let issuer_lookup = self.build_issuer_lookup();
-
         let mut total_found = 0;
         let mut total_not_found = 0;
         let mut count_no_chain = 0;
-        let mut new_fps: Vec<CertificateFingerprint> = Vec::new();
-        for (fp, info) in self.map.iter() {
+        let mut new_certs: Vec<Certificate> = Vec::new();
+        for (fp, info) in self.fp_map.iter() {
             if all_roots.test_fingerprint(fp) {
                 // skip root CAs
                 continue;
@@ -478,12 +462,12 @@ impl Carver {
                 println!("{}", path);
             }
             println!();
-            if !self.build_chains(fp, &issuer_lookup, &all_roots).is_empty() {
+            if !self.build_chains(&info.cert, &all_roots).is_empty() {
                 if found {
                     total_found += 1;
                 } else {
                     total_not_found += 1;
-                    new_fps.push(fp.clone());
+                    new_certs.push(info.cert.clone());
                 }
             } else {
                 count_no_chain += 1;
@@ -497,17 +481,17 @@ impl Carver {
         println!();
 
         let mut new_submission_count = 0;
-        for fp in new_fps.iter() {
+        for cert in new_certs.iter() {
             let mut any_chain = false;
             let mut any_submission_success = false;
             let mut all_submission_errors = true;
             let mut last_submission_error: Option<APIError> = None;
             for log in logs.iter() {
-                if log.trust_roots.test_fingerprint(fp) {
+                if log.trust_roots.test_fingerprint(&cert.fingerprint()) {
                     // skip root CAs
                     continue;
                 }
-                let chains = self.build_chains(fp, &issuer_lookup, &log.trust_roots);
+                let chains = self.build_chains(cert, &log.trust_roots);
                 for chain in chains.iter() {
                     any_chain = true;
                     match log_comms.submit_chain(&log, &chain) {
@@ -518,11 +502,8 @@ impl Carver {
                             any_submission_success = true;
                             all_submission_errors = false;
 
-                            print!("submitted to {}: {}, ", log.get_url(), fp);
-                            self.map[fp]
-                                .cert
-                                .format_issuer_subject(&mut stdout())
-                                .unwrap();
+                            print!("submitted to {}: {}, ", log.get_url(), cert.fingerprint());
+                            cert.format_issuer_subject(&mut stdout()).unwrap();
                             println!();
                             println!();
                             // only submit one chain
@@ -535,12 +516,9 @@ impl Carver {
                                 "submission was rejected by {} with reason {}: {}, ",
                                 log.get_url(),
                                 status,
-                                fp
+                                cert.fingerprint()
                             );
-                            self.map[fp]
-                                .cert
-                                .format_issuer_subject(&mut stdout())
-                                .unwrap();
+                            cert.format_issuer_subject(&mut stdout()).unwrap();
                             println!();
                             println!();
                         }
@@ -560,7 +538,7 @@ impl Carver {
         println!(
             "Successfully submitted {}/{} new certificates",
             new_submission_count,
-            new_fps.len()
+            new_certs.len()
         );
     }
 }
