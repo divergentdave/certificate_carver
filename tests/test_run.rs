@@ -15,5 +15,6 @@ fn test_run() {
     let crtsh = MockCrtShServer();
     let log_comms = MockLogServers::new();
     carver.run(&args, &crtsh, &log_comms);
-    assert!(*log_comms.add_chain_count.borrow() > 0);
+    let chains = log_comms.submitted_chains.borrow();
+    assert!(chains.len() > 0);
 }

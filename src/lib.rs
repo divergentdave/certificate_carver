@@ -97,6 +97,7 @@ impl AsRef<[u8]> for CertificateBytes {
     }
 }
 
+#[derive(Clone)]
 pub struct CertificateChain(pub Vec<CertificateBytes>);
 
 pub struct CertificateRecord {
