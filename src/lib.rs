@@ -197,7 +197,7 @@ impl Carver {
     }
 
     pub fn add_cert(&mut self, der: CertificateBytes, path: &str) {
-        if let Ok(cert) = Certificate::parse(der.0) {
+        if let Ok(cert) = Certificate::parse(der) {
             let digest = cert.fingerprint();
             let entry = self.fp_map.entry(digest);
             let info = entry.or_insert_with(|| CertificateRecord::new(cert.clone()));

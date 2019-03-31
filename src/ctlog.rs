@@ -1,6 +1,6 @@
 use crate::{
-    pem_base64_decode, pem_base64_encode, APIError, Certificate, CertificateChain,
-    CertificateFingerprint,
+    pem_base64_decode, pem_base64_encode, APIError, Certificate, CertificateBytes,
+    CertificateChain, CertificateFingerprint,
 };
 use reqwest::Url;
 use std::collections::HashSet;
@@ -44,13 +44,16 @@ impl LogInfo {
         let mut vec = Vec::new();
         for encoded in body.certificates {
             match pem_base64_decode(&encoded) {
-                Ok(bytes) => match Certificate::parse(bytes) {
-                    Ok(cert) => vec.push(cert),
-                    Err(_) => println!(
-                        "Warning: Couldn't parse a trusted root certificate from {}",
-                        self.url
-                    ),
-                },
+                Ok(bytes) => {
+                    let bytes = CertificateBytes(bytes);
+                    match Certificate::parse(bytes) {
+                        Ok(cert) => vec.push(cert),
+                        Err(_) => println!(
+                            "Warning: Couldn't parse a trusted root certificate from {}",
+                            self.url
+                        ),
+                    }
+                }
                 Err(_) => println!("Warning: Couldn't decode trusted roots from {}", self.url),
             }
         }

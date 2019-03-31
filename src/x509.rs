@@ -65,8 +65,7 @@ pub struct Certificate {
 }
 
 impl Certificate {
-    pub fn parse(bytes: Vec<u8>) -> Result<Certificate, Error> {
-        let bytes = CertificateBytes(bytes);
+    pub fn parse(bytes: CertificateBytes) -> Result<Certificate, Error> {
         let (issuer, subject) = Certificate::parse_cert_names(bytes.as_ref())?;
         let mut arr: [u8; 32] = Default::default();
         arr.copy_from_slice(&Sha256::digest(bytes.as_ref()));
