@@ -43,13 +43,15 @@ impl LogInfo {
         let body = log_comms.fetch_roots_resp(self)?;
         let mut vec = Vec::new();
         for encoded in body.certificates {
-            let bytes = pem_base64_decode(&encoded).unwrap();
-            match Certificate::parse(bytes) {
-                Ok(cert) => vec.push(cert),
-                Err(_) => println!(
-                    "Warning: Couldn't parse a trusted root certificate from {}",
-                    self.url
-                ),
+            match pem_base64_decode(&encoded) {
+                Ok(bytes) => match Certificate::parse(bytes) {
+                    Ok(cert) => vec.push(cert),
+                    Err(_) => println!(
+                        "Warning: Couldn't parse a trusted root certificate from {}",
+                        self.url
+                    ),
+                },
+                Err(_) => println!("Warning: Couldn't decode trusted roots from {}", self.url),
             }
         }
         self.roots = vec;
