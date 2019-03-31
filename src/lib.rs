@@ -184,7 +184,7 @@ impl<R: Read> BufReaderOverlap<R> {
 pub struct Carver {
     pub log_urls: Vec<String>,
     pub fp_map: HashMap<CertificateFingerprint, CertificateRecord>,
-    pub subject_map: HashMap<NameInfo, Vec<Certificate>>,
+    pub subject_map: HashMap<NameInfo, Vec<CertificateFingerprint>>,
 }
 
 impl Carver {
@@ -199,14 +199,15 @@ impl Carver {
     pub fn add_cert(&mut self, der: CertificateBytes, path: &str) {
         if let Ok(cert) = Certificate::parse(der) {
             let digest = cert.fingerprint();
+            let subject = cert.get_subject().clone();
+
             let entry = self.fp_map.entry(digest);
-            let info = entry.or_insert_with(|| CertificateRecord::new(cert.clone()));
+            let info = entry.or_insert_with(|| CertificateRecord::new(cert));
             info.paths.push(String::from(path));
 
-            let subject = cert.get_subject().clone();
             let entry = self.subject_map.entry(subject);
-            let cert_vec = entry.or_insert_with(Vec::new);
-            cert_vec.push(cert);
+            let fp_vec = entry.or_insert_with(Vec::new);
+            fp_vec.push(digest);
         }
     }
 
@@ -364,16 +365,16 @@ impl Carver {
         fn recurse<'a>(
             cert: &'a Certificate,
             history: &[CertificateFingerprint],
-            subject_map: &'a HashMap<NameInfo, Vec<Certificate>>,
+            fp_map: &'a HashMap<CertificateFingerprint, CertificateRecord>,
+            subject_map: &'a HashMap<NameInfo, Vec<CertificateFingerprint>>,
             trust_roots: &TrustRoots,
         ) -> Vec<Vec<CertificateFingerprint>> {
-            if let Some(issuer_certs) = subject_map.get(cert.get_issuer()) {
+            if let Some(issuer_fps) = subject_map.get(cert.get_issuer()) {
                 let mut partial_chains: Vec<Vec<CertificateFingerprint>> = Vec::new();
-                for issuer_cert in issuer_certs.iter() {
-                    let issuer_fp = issuer_cert.fingerprint();
+                for issuer_fp in issuer_fps.iter() {
                     let mut in_history = false;
                     for history_fp in history.iter() {
-                        if issuer_fp == *history_fp {
+                        if issuer_fp == history_fp {
                             in_history = true;
                             break;
                         }
@@ -388,7 +389,9 @@ impl Carver {
                         // only want this chain once, even if we have multiple equivalent roots
                         break;
                     } else {
-                        let mut result = recurse(&issuer_cert, &new, subject_map, trust_roots);
+                        let issuer_cert = &fp_map[issuer_fp].cert;
+                        let mut result =
+                            recurse(issuer_cert, &new, fp_map, subject_map, trust_roots);
                         partial_chains.append(&mut result);
                     }
                 }
@@ -397,7 +400,13 @@ impl Carver {
                 Vec::new()
             }
         }
-        let fp_chains = recurse(leaf, &Vec::new(), &self.subject_map, trust_roots);
+        let fp_chains = recurse(
+            leaf,
+            &Vec::new(),
+            &self.fp_map,
+            &self.subject_map,
+            trust_roots,
+        );
         fp_chains
             .into_iter()
             .map(|fp_chain| {
