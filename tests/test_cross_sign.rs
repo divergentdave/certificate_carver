@@ -4,7 +4,7 @@ mod utils;
 
 use std::io::Cursor;
 
-use certificate_carver::ctlog::LogInfo;
+use certificate_carver::ctlog::{LogInfo, LogShard};
 use certificate_carver::x509::Certificate;
 use certificate_carver::Carver;
 
@@ -47,7 +47,7 @@ fn test_cross_signatures() {
     carver.scan_file_object(&mut cert4, "cert4");
     assert_eq!(carver.fp_map.len(), 5);
 
-    let mut log = LogInfo::new("http://127.0.0.0/");
+    let mut log = LogInfo::new("http://127.0.0.0/", LogShard::Any);
     log.trust_roots
         .add_roots(&[Certificate::parse(decode_pem(root_pem)).unwrap()]);
 

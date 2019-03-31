@@ -183,15 +183,15 @@ impl<R: Read> BufReaderOverlap<R> {
 }
 
 pub struct Carver {
-    pub log_urls: Vec<String>,
+    pub logs: Vec<LogInfo>,
     pub fp_map: HashMap<CertificateFingerprint, CertificateRecord>,
     pub subject_map: HashMap<NameInfo, Vec<CertificateFingerprint>>,
 }
 
 impl Carver {
-    pub fn new(log_urls: Vec<String>) -> Carver {
+    pub fn new(logs: Vec<LogInfo>) -> Carver {
         Carver {
-            log_urls,
+            logs,
             fp_map: HashMap::new(),
             subject_map: HashMap::new(),
         }
@@ -425,23 +425,24 @@ impl Carver {
         for arg in args.iter() {
             self.scan_directory_or_file(&arg);
         }
-        let mut logs = Vec::new();
-        let mut all_roots = TrustRoots::new();
-        for log_url in self.log_urls.clone().iter() {
-            let mut log = LogInfo::new(log_url);
+        let mut all_roots_vec = Vec::new();
+        for log in self.logs.iter_mut() {
             match log.fetch_roots(log_comms) {
                 Ok(_) => {
-                    for root_cert in &log.roots[..] {
-                        self.add_cert(root_cert.get_bytes().clone(), "log roots");
+                    for root_cert in log.roots.iter() {
+                        all_roots_vec.push(root_cert.clone());
                     }
-                    all_roots.add_roots(&log.roots);
-                    logs.push(log);
                 }
                 Err(e) => {
-                    println!("Warning: couldn't connect to {}, {:?}", log_url, e);
+                    println!("Warning: couldn't connect to {}, {:?}", log.get_url(), e);
                 }
             }
         }
+        for root_cert in all_roots_vec.iter() {
+            self.add_cert(root_cert.get_bytes().clone(), "log roots");
+        }
+        let mut all_roots = TrustRoots::new();
+        all_roots.add_roots(&all_roots_vec[..]);
 
         let mut total_found = 0;
         let mut total_not_found = 0;
@@ -490,7 +491,7 @@ impl Carver {
             let mut any_submission_success = false;
             let mut all_submission_errors = true;
             let mut last_submission_error: Option<APIError> = None;
-            for log in logs.iter() {
+            for log in self.logs.iter() {
                 if log.trust_roots.test_fingerprint(&cert.fingerprint()) {
                     // skip root CAs
                     continue;

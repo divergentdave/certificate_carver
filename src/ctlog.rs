@@ -24,18 +24,25 @@ pub struct AddChainResponse {
     signature: String,
 }
 
+pub enum LogShard {
+    Any,
+    ExpiryYear(u16),
+}
+
 pub struct LogInfo {
     url: Url,
     pub roots: Vec<Certificate>,
     pub trust_roots: TrustRoots,
+    pub shard: LogShard,
 }
 
 impl LogInfo {
-    pub fn new(url: &str) -> LogInfo {
+    pub fn new(url: &str, shard: LogShard) -> LogInfo {
         LogInfo {
             url: Url::parse(url).unwrap(),
             roots: Vec::new(),
             trust_roots: TrustRoots::new(),
+            shard,
         }
     }
 
