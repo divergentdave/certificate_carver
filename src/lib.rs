@@ -427,15 +427,8 @@ impl Carver {
         }
         let mut all_roots_vec = Vec::new();
         for log in self.logs.iter_mut() {
-            match log.fetch_roots(log_comms) {
-                Ok(_) => {
-                    for root_cert in log.roots.iter() {
-                        all_roots_vec.push(root_cert.clone());
-                    }
-                }
-                Err(e) => {
-                    println!("Warning: couldn't connect to {}, {:?}", log.get_url(), e);
-                }
+            for root_cert in log.roots.iter() {
+                all_roots_vec.push(root_cert.clone());
             }
         }
         for root_cert in all_roots_vec.iter() {

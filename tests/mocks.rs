@@ -32,31 +32,6 @@ impl MockLogServers {
 }
 
 impl LogServers for MockLogServers {
-    fn fetch_roots_resp(&self, log: &LogInfo) -> Result<GetRootsResponse, APIError> {
-        let url_str = log.get_url().as_str();
-        let json_str;
-        if (url_str == "https://ct.googleapis.com/pilot/")
-            || (url_str == "https://ct.googleapis.com/daedalus/")
-        {
-            json_str = include_str!("roots/pilot-daedalus.json");
-        } else if url_str == "https://ct.googleapis.com/icarus/" {
-            json_str = include_str!("roots/icarus.json");
-        } else if url_str == "https://ct1.digicert-ct.com/log/" {
-            json_str = include_str!("roots/digicert-ct1.json");
-        } else if url_str == "https://dodo.ct.comodo.com/" {
-            json_str = include_str!("roots/dodo.json");
-        } else if (url_str == "https://sabre.ct.comodo.com/")
-            || (url_str == "https://mammoth.ct.comodo.com/")
-        {
-            json_str = include_str!("roots/mammoth-sabre.json");
-        } else if url_str == "https://plausible.ct.nordu.net/" {
-            json_str = include_str!("roots/plausible.json");
-        } else {
-            panic!("No mock data is stored for {}", url_str);
-        }
-        Ok(serde_json::from_str(json_str).unwrap())
-    }
-
     fn submit_chain(
         &self,
         log: &LogInfo,

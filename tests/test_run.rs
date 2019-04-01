@@ -15,7 +15,11 @@ use certificate_carver::Carver;
 #[test]
 fn test_run() {
     let log_url_str = "https://ct.googleapis.com/pilot/";
-    let logs = vec![LogInfo::new(log_url_str, LogShard::Any)];
+    let logs = vec![LogInfo::new(
+        log_url_str,
+        LogShard::Any,
+        include_str!("../roots/pilot-daedalus.json"),
+    )];
     let mut carver = Carver::new(logs);
     let mut args = Vec::new();
     args.push(format!("{}/tests/files", env!("CARGO_MANIFEST_DIR")));

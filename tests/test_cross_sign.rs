@@ -47,7 +47,7 @@ fn test_cross_signatures() {
     carver.scan_file_object(&mut cert4, "cert4");
     assert_eq!(carver.fp_map.len(), 5);
 
-    let mut log = LogInfo::new("http://127.0.0.0/", LogShard::Any);
+    let mut log = LogInfo::new("http://127.0.0.0/", LogShard::Any, "{\"certificates\":[]}");
     log.trust_roots
         .add_roots(&[Certificate::parse(decode_pem(root_pem)).unwrap()]);
 
