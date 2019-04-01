@@ -24,51 +24,55 @@ pub struct AddChainResponse {
     signature: String,
 }
 
+pub enum LogShard {
+    Any,
+    ExpiryYear(u64),
+}
+
 pub struct LogInfo {
     url: Url,
     pub roots: Vec<Certificate>,
     pub trust_roots: TrustRoots,
+    pub shard: LogShard,
 }
 
 impl LogInfo {
-    pub fn new(url: &str) -> LogInfo {
-        LogInfo {
+    pub fn new(url: &str, shard: LogShard, roots_json: &str) -> LogInfo {
+        let mut log = LogInfo {
             url: Url::parse(url).unwrap(),
             roots: Vec::new(),
             trust_roots: TrustRoots::new(),
-        }
+            shard,
+        };
+        log.parse_roots(roots_json);
+        log
     }
 
-    pub fn fetch_roots(&mut self, log_comms: &LogServers) -> Result<(), Box<std::error::Error>> {
-        let body = log_comms.fetch_roots_resp(self)?;
+    fn parse_roots(&mut self, json_str: &str) {
+        let body: GetRootsResponse = serde_json::from_str(json_str).unwrap();
         let mut vec = Vec::new();
         for encoded in body.certificates {
-            match pem_base64_decode(&encoded) {
-                Ok(bytes) => {
-                    let bytes = CertificateBytes(bytes);
-                    match Certificate::parse(bytes) {
-                        Ok(cert) => vec.push(cert),
-                        Err(_) => println!(
-                            "Warning: Couldn't parse a trusted root certificate from {}",
-                            self.url
-                        ),
-                    }
-                }
-                Err(_) => println!("Warning: Couldn't decode trusted roots from {}", self.url),
-            }
+            let bytes = CertificateBytes(pem_base64_decode(&encoded).unwrap());
+            let cert = Certificate::parse(bytes).unwrap();
+            vec.push(cert);
         }
         self.roots = vec;
         self.trust_roots.add_roots(&self.roots);
-        Ok(())
     }
 
     pub fn get_url(&self) -> &Url {
         &self.url
     }
+
+    pub fn will_accept_year(&self, not_after_year: u64) -> bool {
+        match self.shard {
+            LogShard::Any => true,
+            LogShard::ExpiryYear(year) => year == not_after_year,
+        }
+    }
 }
 
 pub trait LogServers {
-    fn fetch_roots_resp(&self, log: &LogInfo) -> Result<GetRootsResponse, APIError>;
     fn submit_chain(
         &self,
         log: &LogInfo,
@@ -79,12 +83,6 @@ pub trait LogServers {
 pub struct RealLogServers();
 
 impl LogServers for RealLogServers {
-    fn fetch_roots_resp(&self, log: &LogInfo) -> Result<GetRootsResponse, APIError> {
-        let url = log.get_url().join("ct/v1/get-roots").unwrap();
-        let mut resp = reqwest::get(url)?;
-        resp.json().map_err(APIError::Network)
-    }
-
     fn submit_chain(
         &self,
         log: &LogInfo,

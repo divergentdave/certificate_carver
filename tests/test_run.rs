@@ -9,13 +9,17 @@ use reqwest::Url;
 use sha2::{Digest, Sha256};
 
 use crate::mocks::{MockCrtShServer, MockLogServers};
+use certificate_carver::ctlog::{LogInfo, LogShard};
 use certificate_carver::Carver;
 
 #[test]
 fn test_run() {
-    let mut logs = Vec::new();
     let log_url_str = "https://ct.googleapis.com/pilot/";
-    logs.push(String::from(log_url_str));
+    let logs = vec![LogInfo::new(
+        log_url_str,
+        LogShard::Any,
+        include_str!("../roots/pilot-daedalus.json"),
+    )];
     let mut carver = Carver::new(logs);
     let mut args = Vec::new();
     args.push(format!("{}/tests/files", env!("CARGO_MANIFEST_DIR")));
