@@ -383,6 +383,13 @@ impl Carver {
                     if in_history {
                         continue;
                     }
+
+                    let issuer_cert = &fp_map[issuer_fp].cert;
+                    if issuer_cert.get_subject() == cert.get_subject() {
+                        // Don't follow self-signed certificates with the same name as this one
+                        continue;
+                    }
+
                     let mut new = history.to_owned();
                     new.push(cert.fingerprint());
                     if trust_roots.test_fingerprint(&issuer_fp) {
@@ -390,7 +397,6 @@ impl Carver {
                         // only want this chain once, even if we have multiple equivalent roots
                         break;
                     } else {
-                        let issuer_cert = &fp_map[issuer_fp].cert;
                         let mut result =
                             recurse(issuer_cert, &new, fp_map, subject_map, trust_roots);
                         partial_chains.append(&mut result);
