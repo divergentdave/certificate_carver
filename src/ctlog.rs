@@ -26,7 +26,7 @@ pub struct AddChainResponse {
 
 pub enum LogShard {
     Any,
-    ExpiryYear(u16),
+    ExpiryYear(u64),
 }
 
 pub struct LogInfo {
@@ -71,6 +71,13 @@ impl LogInfo {
 
     pub fn get_url(&self) -> &Url {
         &self.url
+    }
+
+    pub fn will_accept_year(&self, not_after_year: u64) -> bool {
+        match self.shard {
+            LogShard::Any => true,
+            LogShard::ExpiryYear(year) => year == not_after_year,
+        }
     }
 }
 

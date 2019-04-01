@@ -496,6 +496,9 @@ impl Carver {
                     // skip root CAs
                     continue;
                 }
+                if !log.will_accept_year(cert.get_not_after_year()) {
+                    continue;
+                }
                 let chains = self.build_chains(cert, &log.trust_roots);
                 for chain in chains.into_iter() {
                     any_chain = true;
