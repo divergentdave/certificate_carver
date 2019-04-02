@@ -6,8 +6,9 @@ extern crate certificate_carver;
 use reqwest::Url;
 use std::cell::RefCell;
 
+use certificate_carver::crtsh::CrtShServer;
 use certificate_carver::ctlog::{AddChainResponse, LogInfo, LogServers};
-use certificate_carver::{APIError, CertificateChain, CertificateFingerprint, CrtShServer};
+use certificate_carver::{APIError, CertificateChain, CertificateFingerprint};
 
 #[derive(Default)]
 pub struct MockCrtShServer();

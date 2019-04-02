@@ -17,13 +17,13 @@ extern crate lazy_static;
 #[macro_use]
 extern crate serde_derive;
 
+pub mod crtsh;
 pub mod ctlog;
 pub mod ldapprep;
 pub mod x509;
 
 use copy_in_place::copy_in_place;
 use regex::bytes::Regex;
-use reqwest::Url;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
@@ -33,6 +33,7 @@ use std::str;
 use walkdir::WalkDir;
 use zip::read::ZipArchive;
 
+use crate::crtsh::CrtShServer;
 use crate::ctlog::{LogInfo, LogServers, TrustRoots};
 use crate::x509::{Certificate, NameInfo};
 
@@ -546,29 +547,5 @@ impl Carver {
             "Successfully submitted {}/{} new certificates",
             new_submission_count, new_certs_len
         );
-    }
-}
-
-pub trait CrtShServer {
-    fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, APIError>;
-}
-
-pub struct RealCrtShServer();
-
-impl CrtShServer for RealCrtShServer {
-    // true: certificate has already been indexed
-    // false: certificate has not been indexed
-    fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, APIError> {
-        let url_str = format!("https://crt.sh/?q={}", fp);
-        let url = Url::parse(&url_str).unwrap();
-        let mut resp = reqwest::get(url)?;
-        if !resp.status().is_success() {
-            return Err(APIError::Status(resp.status()));
-        }
-        let body = resp.text()?;
-        match body.find("Certificate not found") {
-            None => Ok(true),
-            Some(_) => Ok(false),
-        }
     }
 }

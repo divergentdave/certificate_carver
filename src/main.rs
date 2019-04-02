@@ -2,8 +2,9 @@ extern crate certificate_carver;
 
 use std::env::args;
 
+use certificate_carver::crtsh::RealCrtShServer;
 use certificate_carver::ctlog::{LogInfo, LogShard, RealLogServers};
-use certificate_carver::{Carver, RealCrtShServer};
+use certificate_carver::Carver;
 
 const PILOT_DAEDALUS_ROOTS: &str = include_str!("../roots/pilot-daedalus.json");
 const ICARUS_ROOTS: &str = include_str!("../roots/icarus.json");
