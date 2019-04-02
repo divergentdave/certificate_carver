@@ -1,8 +1,9 @@
 extern crate certificate_carver;
 
 use std::env::args;
+use std::path::Path;
 
-use certificate_carver::crtsh::RealCrtShServer;
+use certificate_carver::crtsh::{CachedCrtShServer, CrtShServer, RealCrtShServer};
 use certificate_carver::ctlog::{LogInfo, LogShard, RealLogServers};
 use certificate_carver::Carver;
 
@@ -203,6 +204,14 @@ fn main() {
     ];
     let mut carver = Carver::new(logs);
     let crtsh = RealCrtShServer();
+    let cache_dir = Path::new("certificate_carver_cache");
+    let crtsh: Box<CrtShServer> = match CachedCrtShServer::new(&crtsh, cache_dir) {
+        Ok(cached_crtsh) => Box::new(cached_crtsh),
+        Err(_) => {
+            println!("Warning: couldn't create or open cache");
+            Box::new(crtsh)
+        }
+    };
     let log_comms = RealLogServers();
-    carver.run(&args, &crtsh, &log_comms);
+    carver.run(&args, crtsh.as_ref(), &log_comms);
 }
