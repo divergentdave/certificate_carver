@@ -453,29 +453,32 @@ impl Carver {
                 // skip root CAs
                 continue;
             }
-            let found = crtsh.check_crtsh(fp).unwrap();
             info.cert.format_issuer_subject(&mut stdout()).unwrap();
             println!();
-            println!(
-                "{}, crtsh seen = {}, {} file paths",
-                fp,
-                found,
-                info.paths.len()
-            );
-            for path in info.paths.iter() {
-                println!("{}", path);
-            }
-            println!();
             if !self.build_chains(&info.cert, &all_roots).is_empty() {
+                let found = crtsh.check_crtsh(fp).unwrap();
                 if found {
                     total_found += 1;
                 } else {
                     total_not_found += 1;
                     new_certs.push(&info.cert);
                 }
+
+                println!(
+                    "{}, crtsh seen = {}, {} file paths",
+                    fp,
+                    found,
+                    info.paths.len()
+                );
             } else {
                 count_no_chain += 1;
+
+                println!("{}, doesn't chain, {} file paths", fp, info.paths.len());
             }
+            for path in info.paths.iter() {
+                println!("{}", path);
+            }
+            println!();
         }
         let total = total_found + total_not_found;
         println!(
