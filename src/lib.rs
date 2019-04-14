@@ -215,9 +215,14 @@ impl Carver {
     pub fn carve_stream<R: Read>(&self, stream: &mut R) -> Vec<CertificateBytes> {
         lazy_static! {
             static ref HEADER_RE: Regex = Regex::new(
-                r"(?P<DER>(?-u:\x30\x82(?P<length>..)\x30\x82..(?:\xa0\x03\x02\x01.)?\x02))|(?P<PEM>-----BEGIN CERTIFICATE-----)"
+                "(?P<DER>(?-u:\\x30\\x82(?P<length>..)\\x30\\x82..(?:\\xa0\\x03\\x02\\x01.)?\\x02))|\
+                (?P<PEM>-----BEGIN CERTIFICATE-----)|\
+                (?P<XMLDSig><(?:[A-Z_a-z][A-Z_a-z-.0-9]*:)?X509Certificate>)"
             ).unwrap();
             static ref PEM_END_RE: Regex = Regex::new("-----END CERTIFICATE-----").unwrap();
+            static ref XMLDSIG_END_RE: Regex = Regex::new(
+                "</(?:[A-Z_a-z][A-Z_a-z-.0-9]*:)?X509Certificate>"
+            ).unwrap();
         }
 
         let mut results = Vec::new();
@@ -258,7 +263,7 @@ impl Carver {
                         }
                     } else if let Some(m) = caps.name("PEM") {
                         let header_start = m.start();
-                        let b64_start = header_start + 27;
+                        let b64_start = m.end();
                         match PEM_END_RE.find(&buf[b64_start..]) {
                             Some(m2) => {
                                 let b64_end = b64_start + m2.start();
@@ -281,8 +286,33 @@ impl Carver {
                                 }
                             }
                         }
+                    } else if let Some(m) = caps.name("XMLDSig") {
+                        let tag_start = m.start();
+                        let b64_start = m.end();
+                        match XMLDSIG_END_RE.find(&buf[b64_start..]) {
+                            Some(m2) => {
+                                let b64_end = b64_start + m2.start();
+                                let encoded = &buf[b64_start..b64_end];
+                                if let Ok(bytes) = pem_base64_decode(&encoded) {
+                                    results.push(CertificateBytes(bytes));
+                                }
+                                m.end()
+                            }
+                            None => {
+                                // The closing tag isn't in the buffer yet, try reading more if the
+                                // buffer is too small
+                                if buf.len() - tag_start < MAX_CERTIFICATE_SIZE && !eof {
+                                    min_size = MAX_CERTIFICATE_SIZE;
+                                    tag_start
+                                } else {
+                                    // Couldn't find a closing tag, this was probably a false
+                                    // positive. Keep searching from after the opening tag.
+                                    m.end()
+                                }
+                            }
+                        }
                     } else {
-                        panic!("Impossible else branch, if this regex matches, one of its two capturing groups must match");
+                        panic!("Impossible else branch, if this regex matches, one of its three capturing groups must match");
                     }
                 }
                 None => {
