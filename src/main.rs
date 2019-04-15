@@ -30,7 +30,7 @@ fn main() {
         ),
         LogInfo::new(
             "https://ct.googleapis.com/daedalus/",
-            LogShard::Any,
+            LogShard::AlreadyExpired,
             PILOT_DAEDALUS_ROOTS,
         ),
         LogInfo::new(

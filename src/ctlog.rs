@@ -27,6 +27,7 @@ pub struct AddChainResponse {
 pub enum LogShard {
     Any,
     ExpiryYear(u64),
+    AlreadyExpired,
 }
 
 pub struct LogInfo {
@@ -68,6 +69,7 @@ impl LogInfo {
         match self.shard {
             LogShard::Any => true,
             LogShard::ExpiryYear(year) => year == not_after_year,
+            LogShard::AlreadyExpired => not_after_year < 2019,
         }
     }
 }
