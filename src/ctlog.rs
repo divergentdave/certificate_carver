@@ -89,9 +89,17 @@ pub trait LogServers {
     ) -> Result<AddChainResponse, APIError>;
 }
 
-pub struct RealLogServers();
+pub struct RealLogServers<'a> {
+    client: &'a reqwest::Client,
+}
 
-impl LogServers for RealLogServers {
+impl<'a> RealLogServers<'a> {
+    pub fn new(client: &'a reqwest::Client) -> RealLogServers<'a> {
+        RealLogServers { client }
+    }
+}
+
+impl LogServers for RealLogServers<'_> {
     fn submit_chain(
         &self,
         log: &LogInfo,
@@ -104,8 +112,7 @@ impl LogServers for RealLogServers {
             .map(|c| pem_base64_encode(c.as_ref()))
             .collect();
         let request_body = AddChainRequest { chain: encoded };
-        let client = reqwest::Client::new();
-        let mut response = client.post(url).json(&request_body).send()?;
+        let mut response = self.client.post(url).json(&request_body).send()?;
         if !response.status().is_success() {
             return Err(APIError::Status(response.status()));
         }

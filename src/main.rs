@@ -201,7 +201,8 @@ fn main() {
         ),
     ];
     let mut carver = Carver::new(logs);
-    let crtsh = RealCrtShServer();
-    let log_comms = RealLogServers();
+    let client = reqwest::Client::new();
+    let crtsh = RealCrtShServer::new(&client);
+    let log_comms = RealLogServers::new(&client);
     carver.run(&args, &crtsh, &log_comms);
 }
