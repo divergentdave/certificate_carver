@@ -25,7 +25,7 @@ pub mod x509;
 use copy_in_place::copy_in_place;
 use regex::bytes::Regex;
 use reqwest::Url;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
 use std::io::{stdout, Read, Seek, SeekFrom};
@@ -186,7 +186,7 @@ impl<R: Read> BufReaderOverlap<R> {
 pub struct Carver {
     pub logs: Vec<LogInfo>,
     pub fp_map: HashMap<CertificateFingerprint, CertificateRecord>,
-    pub subject_map: HashMap<NameInfo, Vec<CertificateFingerprint>>,
+    pub subject_map: HashMap<NameInfo, HashSet<CertificateFingerprint>>,
 }
 
 impl Carver {
@@ -208,8 +208,8 @@ impl Carver {
             info.paths.push(String::from(path));
 
             let entry = self.subject_map.entry(subject);
-            let fp_vec = entry.or_insert_with(Vec::new);
-            fp_vec.push(digest);
+            let fp_vec = entry.or_insert_with(HashSet::new);
+            fp_vec.insert(digest);
         }
     }
 
@@ -398,7 +398,7 @@ impl Carver {
             cert: &'a Certificate,
             history: &[CertificateFingerprint],
             fp_map: &'a HashMap<CertificateFingerprint, CertificateRecord>,
-            subject_map: &'a HashMap<NameInfo, Vec<CertificateFingerprint>>,
+            subject_map: &'a HashMap<NameInfo, HashSet<CertificateFingerprint>>,
             trust_roots: &TrustRoots,
         ) -> Vec<Vec<CertificateFingerprint>> {
             if let Some(issuer_fps) = subject_map.get(cert.get_issuer()) {
