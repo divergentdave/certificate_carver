@@ -1,4 +1,5 @@
 extern crate base64;
+extern crate chrono;
 extern crate copy_in_place;
 extern crate encoding;
 extern crate hex;

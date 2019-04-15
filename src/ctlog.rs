@@ -2,6 +2,8 @@ use crate::{
     pem_base64_decode, pem_base64_encode, APIError, Certificate, CertificateBytes,
     CertificateChain, CertificateFingerprint,
 };
+use chrono::{Datelike, Utc};
+use lazy_static;
 use reqwest::Url;
 use std::collections::HashSet;
 
@@ -69,7 +71,12 @@ impl LogInfo {
         match self.shard {
             LogShard::Any => true,
             LogShard::ExpiryYear(year) => year == not_after_year,
-            LogShard::AlreadyExpired => not_after_year < 2019,
+            LogShard::AlreadyExpired => {
+                lazy_static! {
+                    static ref CURRENT_YEAR: u64 = Utc::today().year() as u64;
+                }
+                not_after_year < *CURRENT_YEAR
+            }
         }
     }
 }
