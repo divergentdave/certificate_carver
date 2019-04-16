@@ -32,7 +32,7 @@ fn main() {
         ),
         LogInfo::new(
             "https://ct.googleapis.com/daedalus/",
-            LogShard::Any,
+            LogShard::AlreadyExpired,
             PILOT_DAEDALUS_ROOTS,
         ),
         LogInfo::new(
@@ -203,7 +203,8 @@ fn main() {
         ),
     ];
     let mut carver = Carver::new(logs);
-    let crtsh = RealCrtShServer();
+    let client = reqwest::Client::new();
+    let crtsh = RealCrtShServer::new(&client);
     let cache_dir = Path::new("certificate_carver_cache");
     let crtsh: Box<CrtShServer> = match CachedCrtShServer::new(&crtsh, cache_dir) {
         Ok(cached_crtsh) => Box::new(cached_crtsh),
@@ -212,6 +213,6 @@ fn main() {
             Box::new(crtsh)
         }
     };
-    let log_comms = RealLogServers();
+    let log_comms = RealLogServers::new(&client);
     carver.run(&args, crtsh.as_ref(), &log_comms);
 }

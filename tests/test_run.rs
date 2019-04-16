@@ -22,7 +22,10 @@ fn test_run() {
     )];
     let mut carver = Carver::new(logs);
     let mut args = Vec::new();
-    args.push(format!("{}/tests/files", env!("CARGO_MANIFEST_DIR")));
+    args.push(format!(
+        "{}/tests/files/davidsherenowitsa.party",
+        env!("CARGO_MANIFEST_DIR")
+    ));
     let crtsh = MockCrtShServer();
     let log_comms = MockLogServers::new();
     carver.run(&args, &crtsh, &log_comms);

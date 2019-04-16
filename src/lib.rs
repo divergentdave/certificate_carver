@@ -1,4 +1,5 @@
 extern crate base64;
+extern crate chrono;
 extern crate copy_in_place;
 extern crate encoding;
 extern crate hex;
@@ -24,7 +25,7 @@ pub mod x509;
 
 use copy_in_place::copy_in_place;
 use regex::bytes::Regex;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
 use std::io::{stdout, Read, Seek, SeekFrom};
@@ -186,7 +187,7 @@ impl<R: Read> BufReaderOverlap<R> {
 pub struct Carver {
     pub logs: Vec<LogInfo>,
     pub fp_map: HashMap<CertificateFingerprint, CertificateRecord>,
-    pub subject_map: HashMap<NameInfo, Vec<CertificateFingerprint>>,
+    pub subject_map: HashMap<NameInfo, HashSet<CertificateFingerprint>>,
 }
 
 impl Carver {
@@ -208,17 +209,22 @@ impl Carver {
             info.paths.push(String::from(path));
 
             let entry = self.subject_map.entry(subject);
-            let fp_vec = entry.or_insert_with(Vec::new);
-            fp_vec.push(digest);
+            let fp_vec = entry.or_insert_with(HashSet::new);
+            fp_vec.insert(digest);
         }
     }
 
     pub fn carve_stream<R: Read>(&self, stream: &mut R) -> Vec<CertificateBytes> {
         lazy_static! {
             static ref HEADER_RE: Regex = Regex::new(
-                r"(?P<DER>(?-u:\x30\x82(?P<length>..)\x30\x82..(?:\xa0\x03\x02\x01.)?\x02))|(?P<PEM>-----BEGIN CERTIFICATE-----)"
+                "(?P<DER>(?-u:\\x30\\x82(?P<length>..)\\x30\\x82..(?:\\xa0\\x03\\x02\\x01.)?\\x02))|\
+                (?P<PEM>-----BEGIN CERTIFICATE-----)|\
+                (?P<XMLDSig><(?:[A-Z_a-z][A-Z_a-z-.0-9]*:)?X509Certificate>)"
             ).unwrap();
             static ref PEM_END_RE: Regex = Regex::new("-----END CERTIFICATE-----").unwrap();
+            static ref XMLDSIG_END_RE: Regex = Regex::new(
+                "</(?:[A-Z_a-z][A-Z_a-z-.0-9]*:)?X509Certificate>"
+            ).unwrap();
         }
 
         let mut results = Vec::new();
@@ -259,7 +265,7 @@ impl Carver {
                         }
                     } else if let Some(m) = caps.name("PEM") {
                         let header_start = m.start();
-                        let b64_start = header_start + 27;
+                        let b64_start = m.end();
                         match PEM_END_RE.find(&buf[b64_start..]) {
                             Some(m2) => {
                                 let b64_end = b64_start + m2.start();
@@ -282,8 +288,33 @@ impl Carver {
                                 }
                             }
                         }
+                    } else if let Some(m) = caps.name("XMLDSig") {
+                        let tag_start = m.start();
+                        let b64_start = m.end();
+                        match XMLDSIG_END_RE.find(&buf[b64_start..]) {
+                            Some(m2) => {
+                                let b64_end = b64_start + m2.start();
+                                let encoded = &buf[b64_start..b64_end];
+                                if let Ok(bytes) = pem_base64_decode(&encoded) {
+                                    results.push(CertificateBytes(bytes));
+                                }
+                                m.end()
+                            }
+                            None => {
+                                // The closing tag isn't in the buffer yet, try reading more if the
+                                // buffer is too small
+                                if buf.len() - tag_start < MAX_CERTIFICATE_SIZE && !eof {
+                                    min_size = MAX_CERTIFICATE_SIZE;
+                                    tag_start
+                                } else {
+                                    // Couldn't find a closing tag, this was probably a false
+                                    // positive. Keep searching from after the opening tag.
+                                    m.end()
+                                }
+                            }
+                        }
                     } else {
-                        panic!("Impossible else branch, if this regex matches, one of its two capturing groups must match");
+                        panic!("Impossible else branch, if this regex matches, one of its three capturing groups must match");
                     }
                 }
                 None => {
@@ -368,7 +399,7 @@ impl Carver {
             cert: &'a Certificate,
             history: &[CertificateFingerprint],
             fp_map: &'a HashMap<CertificateFingerprint, CertificateRecord>,
-            subject_map: &'a HashMap<NameInfo, Vec<CertificateFingerprint>>,
+            subject_map: &'a HashMap<NameInfo, HashSet<CertificateFingerprint>>,
             trust_roots: &TrustRoots,
         ) -> Vec<Vec<CertificateFingerprint>> {
             if let Some(issuer_fps) = subject_map.get(cert.get_issuer()) {
@@ -551,4 +582,33 @@ impl Carver {
             new_submission_count, new_certs_len
         );
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Carver;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_der_too_short() {
+        const BYTES: [u8; 14] = [
+            0x30, 0x82, 0xff, 0xff, 0x30, 0x82, 0xff, 0xf0, 0xa0, 0x03, 0x02, 0x01, 0x02, 0x02,
+        ];
+
+        let mut stream = Cursor::new(&BYTES);
+        let carver = Carver::new(Vec::new());
+        let certs = carver.carve_stream(&mut stream);
+        assert!(certs.is_empty());
+    }
+
+    #[test]
+    fn test_pem_too_short() {
+        const BYTES: &[u8] = b"-----BEGIN CERTIFICATE-----\nMIIC";
+
+        let mut stream = Cursor::new(&BYTES);
+        let carver = Carver::new(Vec::new());
+        let certs = carver.carve_stream(&mut stream);
+        assert!(certs.is_empty());
+    }
+
 }

@@ -8,15 +8,23 @@ pub trait CrtShServer {
     fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, APIError>;
 }
 
-pub struct RealCrtShServer();
+pub struct RealCrtShServer<'a> {
+    client: &'a reqwest::Client,
+}
 
-impl CrtShServer for RealCrtShServer {
+impl<'a> RealCrtShServer<'a> {
+    pub fn new(client: &'a reqwest::Client) -> RealCrtShServer<'a> {
+        RealCrtShServer { client }
+    }
+}
+
+impl CrtShServer for RealCrtShServer<'_> {
     // true: certificate has already been indexed
     // false: certificate has not been indexed
     fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, APIError> {
         let url_str = format!("https://crt.sh/?q={}", fp);
         let url = Url::parse(&url_str).unwrap();
-        let mut resp = reqwest::get(url)?;
+        let mut resp = self.client.get(url).send()?;
         if !resp.status().is_success() {
             return Err(APIError::Status(resp.status()));
         }
