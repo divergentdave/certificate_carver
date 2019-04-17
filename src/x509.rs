@@ -626,9 +626,9 @@ fn read_tag_and_get_value<'a>(
             second_byte as usize
         }
         0x82 => {
-            let second_byte = input.read_byte().map_err(|_| error)? as usize;
-            let third_byte = input.read_byte().map_err(|_| error)? as usize;
-            let combined = (second_byte << 8) | third_byte;
+            let second_byte = input.read_byte().map_err(|_| error)?;
+            let third_byte = input.read_byte().map_err(|_| error)?;
+            let combined = u16::from_be_bytes([second_byte, third_byte]) as usize;
             if combined < 256 {
                 return Err(error); // Not the canonical encoding.
             }

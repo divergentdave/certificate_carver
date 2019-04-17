@@ -26,6 +26,7 @@ use copy_in_place::copy_in_place;
 use regex::bytes::Regex;
 use reqwest::Url;
 use std::collections::{HashMap, HashSet};
+use std::convert::TryInto;
 use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
 use std::io::{stdout, Cursor, Read, Seek, SeekFrom};
@@ -243,7 +244,7 @@ impl Carver {
                 Some(caps) => {
                     if let Some(m) = caps.name("DER") {
                         let length_bytes = &caps["length"];
-                        let length = ((length_bytes[0] as usize) << 8) | length_bytes[1] as usize;
+                        let length = u16::from_be_bytes(length_bytes.try_into().unwrap()) as usize;
                         let start = m.start();
                         let end = start + length + 4;
                         if end <= buf.len() {
