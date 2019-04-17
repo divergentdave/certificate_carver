@@ -28,7 +28,7 @@ use reqwest::Url;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
-use std::io::{stdout, Read, Seek, SeekFrom};
+use std::io::{stdout, Cursor, Read, Seek, SeekFrom};
 use std::path::Path;
 use std::str;
 use walkdir::WalkDir;
@@ -218,11 +218,11 @@ impl Carver {
             static ref HEADER_RE: Regex = Regex::new(
                 "(?P<DER>(?-u:\\x30\\x82(?P<length>..)\\x30\\x82..(?:\\xa0\\x03\\x02\\x01.)?\\x02))|\
                 (?P<PEM>-----BEGIN CERTIFICATE-----)|\
-                (?P<XMLDSig><(?:[A-Z_a-z][A-Z_a-z-.0-9]*:)?X509Certificate>)"
+                (?P<XMLDSig><(?:[A-Z_a-z][A-Z_a-z-.0-9]*:)?(X509Certificate|EncapsulatedTimeStamp|CertifiedRole|EncapsulatedX509Certificate|EncapsulatedCRLValue|EncapsulatedOCSPValue)[> ])"
             ).unwrap();
             static ref PEM_END_RE: Regex = Regex::new("-----END CERTIFICATE-----").unwrap();
             static ref XMLDSIG_END_RE: Regex = Regex::new(
-                "</(?:[A-Z_a-z][A-Z_a-z-.0-9]*:)?X509Certificate>"
+                "</(?:[A-Z_a-z][A-Z_a-z-.0-9]*:)?(X509Certificate|EncapsulatedTimeStamp|CertifiedRole|EncapsulatedX509Certificate|EncapsulatedCRLValue|EncapsulatedOCSPValue)>"
             ).unwrap();
         }
 
@@ -289,26 +289,47 @@ impl Carver {
                         }
                     } else if let Some(m) = caps.name("XMLDSig") {
                         let tag_start = m.start();
-                        let b64_start = m.end();
-                        match XMLDSIG_END_RE.find(&buf[b64_start..]) {
-                            Some(m2) => {
-                                let b64_end = b64_start + m2.start();
-                                let encoded = &buf[b64_start..b64_end];
-                                if let Ok(bytes) = pem_base64_decode(&encoded) {
-                                    results.push(CertificateBytes(bytes));
-                                }
-                                m.end()
-                            }
+                        let temp_start = m.end() - 1;
+                        match buf[temp_start..].iter().position(|&b| b == '>' as u8) {
                             None => {
-                                // The closing tag isn't in the buffer yet, try reading more if the
-                                // buffer is too small
+                                // The buffer has the beginning of an opening tag, but not its
+                                // closing angle bracket, try reading more if the buffer is too
+                                // small
                                 if buf.len() - tag_start < MAX_CERTIFICATE_SIZE && !eof {
                                     min_size = MAX_CERTIFICATE_SIZE;
                                     tag_start
                                 } else {
-                                    // Couldn't find a closing tag, this was probably a false
-                                    // positive. Keep searching from after the opening tag.
-                                    m.end()
+                                    // Couldn't find the end of the opening tag, this was probably
+                                    // a false positive. Skip the opening angle bracket and keep
+                                    // searching.
+                                    1
+                                }
+                            }
+                            Some(bracket_off) => {
+                                let b64_start = temp_start + bracket_off + 1;
+                                match XMLDSIG_END_RE.find(&buf[b64_start..]) {
+                                    Some(m2) => {
+                                        let b64_end = b64_start + m2.start();
+                                        let encoded = &buf[b64_start..b64_end];
+                                        if let Ok(bytes) = pem_base64_decode(&encoded) {
+                                            let mut cursor = Cursor::new(bytes);
+                                            results.append(&mut self.carve_stream(&mut cursor));
+                                        }
+                                        m.end()
+                                    }
+                                    None => {
+                                        // The closing tag isn't in the buffer yet, try reading
+                                        // more if the buffer is too small
+                                        if buf.len() - tag_start < MAX_CERTIFICATE_SIZE && !eof {
+                                            min_size = MAX_CERTIFICATE_SIZE;
+                                            tag_start
+                                        } else {
+                                            // Couldn't find a closing tag, this was probably a
+                                            // false positive. Keep searching from after the
+                                            // opening tag.
+                                            m.end()
+                                        }
+                                    }
                                 }
                             }
                         }

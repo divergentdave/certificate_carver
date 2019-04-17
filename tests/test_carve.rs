@@ -53,5 +53,5 @@ fn test_xmldsig() {
     let mut stream = Cursor::new(&bytes[..]);
     let carver = Carver::new(Vec::new());
     let certs = carver.carve_file(&mut stream);
-    assert_eq!(certs.len(), 3);
+    assert_eq!(certs.len(), 9);
 }
