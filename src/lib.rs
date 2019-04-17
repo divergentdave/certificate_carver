@@ -248,7 +248,7 @@ impl Carver {
                         let end = start + length + 4;
                         if end <= buf.len() {
                             results.push(CertificateBytes(buf[start..end].to_vec()));
-                            end
+                            start + 2
                         } else {
                             // The end of this certificate isn't in the buffer yet, try reading
                             // more if the buffer is too small
