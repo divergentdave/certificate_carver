@@ -55,3 +55,21 @@ fn test_xmldsig() {
     let certs = carver.carve_file(&mut stream);
     assert_eq!(certs.len(), 9);
 }
+
+#[test]
+fn test_pdf_1() {
+    let bytes = include_bytes!("files/collected/SampleSignedPDFDocument.pdf");
+    let mut stream = Cursor::new(&bytes[..]);
+    let carver = Carver::new(Vec::new());
+    let certs = carver.carve_file(&mut stream);
+    assert!(certs.len() >= 4);
+}
+
+#[test]
+fn test_pdf_2() {
+    let bytes = include_bytes!("files/collected/SampleSignedPDFDocument.decompressed.pdf");
+    let mut stream = Cursor::new(&bytes[..]);
+    let carver = Carver::new(Vec::new());
+    let certs = carver.carve_file(&mut stream);
+    assert!(certs.len() >= 4);
+}

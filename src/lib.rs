@@ -38,6 +38,7 @@ use zip::read::ZipArchive;
 use crate::ctlog::{LogInfo, LogServers, TrustRoots};
 use crate::x509::{Certificate, NameInfo};
 
+const PDF_MAGIC: [u8; 4] = [0x25, 0x50, 0x44, 0x46];
 const ZIP_MAGIC: [u8; 4] = [0x50, 0x4b, 3, 4];
 
 fn pem_base64_config() -> base64::Config {
@@ -214,7 +215,7 @@ impl Carver {
         }
     }
 
-    pub fn carve_stream<R: Read>(&self, stream: &mut R) -> Vec<CertificateBytes> {
+    pub fn carve_stream<R: Read>(&self, stream: R) -> Vec<CertificateBytes> {
         lazy_static! {
             static ref HEADER_RE: Regex = Regex::new(
                 "(?P<DER>(?-u:\\x30\\x82(?P<length>..)\\x30\\x82..(?:\\xa0\\x03\\x02\\x01.)?\\x02))|\
@@ -378,9 +379,50 @@ impl Carver {
             }
             results.append(&mut self.carve_stream(&mut file));
             results
+        } else if magic == PDF_MAGIC {
+            if let Some(mut results) = self.carve_pdf(&mut file) {
+                results.append(&mut self.carve_stream(&mut file));
+                results
+            } else {
+                self.carve_stream(&mut file)
+            }
         } else {
             self.carve_stream(&mut file)
         }
+    }
+
+    fn carve_pdf(&self, file: &mut Read) -> Option<Vec<CertificateBytes>> {
+        let doc = lopdf::Document::load_from(file).ok()?;
+        let catalog = doc.catalog()?;
+        let acroform_ref = catalog
+            .get(b"AcroForm")
+            .and_then(|obj| obj.as_reference())?;
+        let acroform = doc.get_object(acroform_ref).and_then(|obj| obj.as_dict())?;
+        let sigflags = acroform.get(b"SigFlags").and_then(|obj| obj.as_i64())?;
+        if sigflags & 1 == 0 {
+            // The first bit position is "SignaturesExist"
+            return None;
+        }
+        let fields = acroform.get(b"Fields").and_then(|obj| obj.as_array())?;
+        let mut results = Vec::new();
+        for field_ref in fields.into_iter().flat_map(|obj| obj.as_reference()) {
+            if let Some(field) = doc.get_object(field_ref).and_then(|obj| obj.as_dict()) {
+                if field.get(b"FT").and_then(|obj| obj.as_name()) == Some(b"Sig") {
+                    if let Some(value_ref) = field.get(b"V").and_then(|obj| obj.as_reference()) {
+                        if let Some(value) = doc.get_object(value_ref).and_then(|obj| obj.as_dict())
+                        {
+                            if let Some(lopdf::Object::String(bytes, _)) = value.get(b"Contents") {
+                                results.append(&mut self.carve_stream(&bytes[..]));
+                            }
+                            if let Some(lopdf::Object::String(bytes, _)) = value.get(b"Cert") {
+                                results.append(&mut self.carve_stream(&bytes[..]));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Some(results)
     }
 
     pub fn scan_file_object<RS: Read + Seek>(&mut self, mut file: &mut RS, path: &str) {
