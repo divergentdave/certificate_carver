@@ -382,9 +382,17 @@ impl Carver {
             results
         } else if magic == PDF_MAGIC {
             if let Some(mut results) = self.carve_pdf(&mut file) {
+                match file.seek(SeekFrom::Start(0)) {
+                    Ok(_) => (),
+                    Err(_) => return results,
+                }
                 results.append(&mut self.carve_stream(&mut file));
                 results
             } else {
+                match file.seek(SeekFrom::Start(0)) {
+                    Ok(_) => (),
+                    Err(_) => return Vec::new(),
+                }
                 self.carve_stream(&mut file)
             }
         } else {
