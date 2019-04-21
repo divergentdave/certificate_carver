@@ -3,6 +3,7 @@ extern crate chrono;
 extern crate copy_in_place;
 extern crate encoding;
 extern crate hex;
+extern crate lopdf;
 extern crate regex;
 extern crate reqwest;
 extern crate sha2;
@@ -405,7 +406,7 @@ impl Carver {
         }
         let fields = acroform.get(b"Fields").and_then(|obj| obj.as_array())?;
         let mut results = Vec::new();
-        for field_ref in fields.into_iter().flat_map(|obj| obj.as_reference()) {
+        for field_ref in fields.into_iter().filter_map(|obj| obj.as_reference()) {
             if let Some(field) = doc.get_object(field_ref).and_then(|obj| obj.as_dict()) {
                 if field.get(b"FT").and_then(|obj| obj.as_name()) == Some(b"Sig") {
                     if let Some(value_ref) = field.get(b"V").and_then(|obj| obj.as_reference()) {
