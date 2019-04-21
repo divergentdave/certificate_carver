@@ -16,9 +16,7 @@ const NIMBUS_ROOTS: &str = include_str!("../roots/nimbus.json");
 const NESSIE_YETI_ROOTS: &str = include_str!("../roots/nessie-yeti.json");
 
 fn main() {
-    let mut iter = args();
-    iter.next(); // skip argv[0]
-    let args = iter.collect::<Vec<String>>();
+    let args = args().skip(1).collect::<Vec<String>>();
     if args.is_empty() {
         panic!("pass at least one directory as a command line argument");
     }
