@@ -1,6 +1,9 @@
 use reqwest::Url;
 use sled::{self, Db};
 use std::path::Path;
+use std::sync::Mutex;
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 
 use crate::{APIError, CertificateFingerprint};
 
@@ -60,5 +63,38 @@ impl<'a> CrtShServer for CachedCrtShServer<'a> {
             }
         }
         Ok(result)
+    }
+}
+
+pub struct DelayCrtShServer<'a> {
+    inner: &'a CrtShServer,
+    delay: Duration,
+    last_request: Mutex<Instant>,
+}
+
+impl<'a> DelayCrtShServer<'a> {
+    pub fn new(inner: &'a CrtShServer, delay: Duration) -> DelayCrtShServer<'a> {
+        DelayCrtShServer {
+            inner,
+            delay,
+            last_request: Mutex::new(Instant::now() - delay),
+        }
+    }
+}
+
+impl CrtShServer for DelayCrtShServer<'_> {
+    fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, APIError> {
+        {
+            let mut guard = self.last_request.lock().unwrap();
+            let mut now = Instant::now();
+            let elapsed = now.duration_since(*guard);
+            if elapsed < self.delay {
+                let sleep_duration = self.delay - elapsed;
+                sleep(sleep_duration);
+                now = Instant::now();
+            }
+            *guard = now;
+        }
+        self.inner.check_crtsh(fp)
     }
 }
