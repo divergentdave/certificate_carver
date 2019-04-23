@@ -217,7 +217,7 @@ impl Carver {
         }
     }
 
-    pub fn carve_stream<R: Read>(&self, stream: R) -> Vec<CertificateBytes> {
+    pub fn carve_stream<R: Read>(&self, stream: &mut R) -> Vec<CertificateBytes> {
         lazy_static! {
             static ref HEADER_RE: Regex = Regex::new(
                 "(?P<DER>(?-u:\\x30\\x82(?P<length>..)\\x30\\x82..(?:\\xa0\\x03\\x02\\x01.)?\\x02))|\
@@ -422,10 +422,12 @@ impl Carver {
                         if let Some(value) = doc.get_object(value_ref).and_then(|obj| obj.as_dict())
                         {
                             if let Some(lopdf::Object::String(bytes, _)) = value.get(b"Contents") {
-                                results.append(&mut self.carve_stream(&bytes[..]));
+                                let mut cursor = Cursor::new(bytes);
+                                results.append(&mut self.carve_stream(&mut cursor));
                             }
                             if let Some(lopdf::Object::String(bytes, _)) = value.get(b"Cert") {
-                                results.append(&mut self.carve_stream(&bytes[..]));
+                                let mut cursor = Cursor::new(bytes);
+                                results.append(&mut self.carve_stream(&mut cursor));
                             }
                         }
                     }
