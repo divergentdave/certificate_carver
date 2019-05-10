@@ -26,7 +26,7 @@ fn test_run() {
         "{}/tests/files/davidsherenowitsa.party",
         env!("CARGO_MANIFEST_DIR")
     ));
-    let crtsh = MockCrtShServer();
+    let crtsh = MockCrtShServer::default();
     let log_comms = MockLogServers::new();
     carver.run(&args, &crtsh, &log_comms);
 

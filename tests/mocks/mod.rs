@@ -10,12 +10,30 @@ use certificate_carver::crtsh::CrtShServer;
 use certificate_carver::ctlog::{AddChainResponse, LogInfo, LogServers};
 use certificate_carver::{APIError, CertificateChain, CertificateFingerprint};
 
-#[derive(Default)]
-pub struct MockCrtShServer();
+pub struct MockCrtShServer {
+    response: bool,
+}
+
+impl MockCrtShServer {
+    #[allow(dead_code)]
+    pub fn always_true() -> MockCrtShServer {
+        MockCrtShServer { response: true }
+    }
+
+    pub fn always_false() -> MockCrtShServer {
+        MockCrtShServer { response: false }
+    }
+}
+
+impl Default for MockCrtShServer {
+    fn default() -> MockCrtShServer {
+        MockCrtShServer::always_false()
+    }
+}
 
 impl CrtShServer for MockCrtShServer {
     fn check_crtsh(&self, _fp: &CertificateFingerprint) -> Result<bool, APIError> {
-        Ok(false)
+        Ok(self.response)
     }
 }
 
@@ -25,6 +43,7 @@ pub struct MockLogServers {
 }
 
 impl MockLogServers {
+    #[allow(dead_code)]
     pub fn new() -> MockLogServers {
         MockLogServers {
             submitted_chains: RefCell::new(Vec::new()),
