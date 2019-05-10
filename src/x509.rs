@@ -258,10 +258,46 @@ impl From<&[u8]> for NameType {
 }
 
 #[derive(Clone, Eq, Debug)]
-pub struct NameTypeValue {
-    pub bytes: Vec<u8>,
-    pub name_type: NameType,
-    pub value: Option<String>,
+pub enum NameTypeValue {
+    CaseInsensitive(NameType, String, String, Vec<u8>),
+    Unknown(NameType, Option<String>, Vec<u8>),
+}
+
+impl NameTypeValue {
+    fn parse(name_type_bytes: &[u8], value_bytes: &[u8], der_bytes: Vec<u8>) -> NameTypeValue {
+        let name_type = NameType::from(name_type_bytes);
+        match name_type {
+            NameType::UnrecognizedType => {
+                NameTypeValue::Unknown(name_type, parse_directory_string(&value_bytes), der_bytes)
+            }
+            name_type => match name_type.matching_rule() {
+                MatchingRule::Unknown => NameTypeValue::Unknown(
+                    name_type,
+                    parse_directory_string(&value_bytes),
+                    der_bytes,
+                ),
+                MatchingRule::CaseIgnoreMatch => match parse_directory_string(&value_bytes) {
+                    None => NameTypeValue::Unknown(name_type, None, der_bytes),
+                    Some(value) => match ldapprep_case_insensitive(&value) {
+                        Err(_) => NameTypeValue::Unknown(name_type, Some(value), der_bytes),
+                        Ok(prepped) => NameTypeValue::CaseInsensitive(
+                            name_type,
+                            value.clone(),
+                            prepped.to_string(),
+                            der_bytes,
+                        ),
+                    },
+                },
+            },
+        }
+    }
+
+    pub fn get_name_type(&self) -> &NameType {
+        match self {
+            NameTypeValue::CaseInsensitive(name_type, _, _, _) => name_type,
+            NameTypeValue::Unknown(name_type, _, _) => name_type,
+        }
+    }
 }
 
 impl PartialEq for NameTypeValue {
@@ -272,34 +308,25 @@ impl PartialEq for NameTypeValue {
 
 impl Ord for NameTypeValue {
     fn cmp(&self, other: &NameTypeValue) -> Ordering {
-        match self.name_type.cmp(&other.name_type) {
-            Ordering::Equal => {
-                if self.name_type == NameType::UnrecognizedType {
-                    self.bytes.cmp(&other.bytes)
-                } else {
-                    match (&self.value, &other.value) {
-                        (Some(self_value), Some(other_value)) => {
-                            match self.name_type.matching_rule() {
-                                MatchingRule::CaseIgnoreMatch => {
-                                    match (
-                                        ldapprep_case_insensitive(&self_value),
-                                        ldapprep_case_insensitive(&other_value),
-                                    ) {
-                                        (Ok(self_prepped), Ok(other_prepped)) => {
-                                            self_prepped.cmp(&other_prepped)
-                                        }
-                                        _ => self.bytes.cmp(&other.bytes),
-                                    }
-                                }
-                                MatchingRule::Unknown => self.bytes.cmp(&other.bytes),
-                            }
-                        }
-                        (Some(_), None) => Ordering::Greater,
-                        (None, Some(_)) => Ordering::Less,
-                        (None, None) => Ordering::Equal,
-                    }
-                }
-            }
+        match self.get_name_type().cmp(&other.get_name_type()) {
+            Ordering::Equal => match (self, other) {
+                (
+                    NameTypeValue::CaseInsensitive(_, _, self_prepped, _),
+                    NameTypeValue::CaseInsensitive(_, _, other_prepped, _),
+                ) => self_prepped.cmp(&other_prepped),
+                (
+                    NameTypeValue::Unknown(_, _, self_bytes),
+                    NameTypeValue::Unknown(_, _, other_bytes),
+                ) => self_bytes.cmp(&other_bytes),
+                (
+                    NameTypeValue::CaseInsensitive(_, _, _, self_bytes),
+                    NameTypeValue::Unknown(_, _, other_bytes),
+                ) => self_bytes.cmp(&other_bytes),
+                (
+                    NameTypeValue::Unknown(_, _, self_bytes),
+                    NameTypeValue::CaseInsensitive(_, _, _, other_bytes),
+                ) => self_bytes.cmp(&other_bytes),
+            },
             result => result,
         }
     }
@@ -313,19 +340,16 @@ impl PartialOrd for NameTypeValue {
 
 impl Hash for NameTypeValue {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.name_type.hash(state);
-        match self.name_type {
-            NameType::UnrecognizedType => self.bytes.hash(state),
-            _ => match &self.value {
-                Some(value) => match self.name_type.matching_rule() {
-                    MatchingRule::CaseIgnoreMatch => match ldapprep_case_insensitive(&value) {
-                        Ok(prepped) => prepped.hash(state),
-                        Err(_) => self.bytes.hash(state),
-                    },
-                    MatchingRule::Unknown => self.bytes.hash(state),
-                },
-                None => self.bytes.hash(state),
-            },
+        match self {
+            NameTypeValue::CaseInsensitive(name_type, _, prepped, _) => {
+                1.hash(state);
+                name_type.hash(state);
+                prepped.hash(state);
+            }
+            NameTypeValue::Unknown(_, _, der) => {
+                2.hash(state);
+                der.hash(state);
+            }
         }
     }
 }
@@ -448,11 +472,11 @@ impl NameInfo {
                                         )
                                         .unwrap();
                                     let type_and_value_data = copy_input(&type_and_value_data);
-                                    attribs.push(NameTypeValue {
-                                        bytes: type_and_value_data,
-                                        name_type: NameType::from(attrib_type.as_ref()),
-                                        value: parse_directory_string(&value_data),
-                                    });
+                                    attribs.push(NameTypeValue::parse(
+                                        attrib_type.as_ref(),
+                                        &value_data,
+                                        type_and_value_data,
+                                    ));
                                     Ok(())
                                 },
                             )?;
@@ -477,13 +501,21 @@ impl NameInfo {
                 for (name_type, type_description) in NAME_ATTRIBUTES_DESCRIPTIONS.iter() {
                     for rdn in rdns.iter() {
                         for type_value in rdn.attribs.iter() {
-                            if type_value.name_type == *name_type {
+                            let (cur_name_type, cur_value) = match type_value {
+                                NameTypeValue::CaseInsensitive(name_type, value, _, _) => {
+                                    (name_type, Some(value))
+                                }
+                                NameTypeValue::Unknown(name_type, value, _) => {
+                                    (name_type, value.as_ref())
+                                }
+                            };
+                            if cur_name_type == name_type {
                                 if space {
                                     write!(f, " {}=", type_description)?;
                                 } else {
                                     write!(f, "{}=", type_description)?;
                                 }
-                                match &type_value.value {
+                                match cur_value {
                                     Some(string) => write!(f, "{}", string)?,
                                     None => write!(f, "(unparseable value)")?,
                                 }
