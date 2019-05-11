@@ -115,7 +115,7 @@ impl CrtShServer for RetryDelayCrtShServer<'_> {
                 Ok(_) => return result,
                 Err(_) => error_count += 1,
             }
-            println!("Retrying request to crt.sh...");
+            println!("Request to crt.sh failed, waiting and retrying...");
         }
     }
 }
