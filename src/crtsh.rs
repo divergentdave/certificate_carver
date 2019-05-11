@@ -72,35 +72,50 @@ impl<'a> CrtShServer for CachedCrtShServer<'a> {
     }
 }
 
-pub struct DelayCrtShServer<'a> {
+pub struct RetryDelayCrtShServer<'a> {
     inner: &'a CrtShServer,
     delay: Duration,
-    last_request: Mutex<Instant>,
+    state: Mutex<RetryDelayState>,
 }
 
-impl<'a> DelayCrtShServer<'a> {
-    pub fn new(inner: &'a CrtShServer, delay: Duration) -> DelayCrtShServer<'a> {
-        DelayCrtShServer {
+struct RetryDelayState {
+    last_request: Instant,
+}
+
+impl<'a> RetryDelayCrtShServer<'a> {
+    pub fn new(inner: &'a CrtShServer, delay: Duration) -> RetryDelayCrtShServer<'a> {
+        let state = RetryDelayState {
+            last_request: Instant::now() - delay,
+        };
+        RetryDelayCrtShServer {
             inner,
             delay,
-            last_request: Mutex::new(Instant::now() - delay),
+            state: Mutex::new(state),
         }
     }
 }
 
-impl CrtShServer for DelayCrtShServer<'_> {
+impl CrtShServer for RetryDelayCrtShServer<'_> {
     fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, APIError> {
-        {
-            let mut guard = self.last_request.lock().unwrap();
+        let mut guard = self.state.lock().unwrap();
+        let mut error_count = 0;
+        loop {
             let mut now = Instant::now();
-            let elapsed = now.duration_since(*guard);
-            if elapsed < self.delay {
-                let sleep_duration = self.delay - elapsed;
+            let elapsed = now.duration_since((*guard).last_request);
+            let delay = self.delay * (1 << error_count);
+            if elapsed < delay {
+                let sleep_duration = delay - elapsed;
                 sleep(sleep_duration);
                 now = Instant::now();
             }
-            *guard = now;
+            (*guard).last_request = now;
+
+            let result = self.inner.check_crtsh(fp);
+            match result {
+                Ok(_) => return result,
+                Err(_) => error_count += 1,
+            }
+            println!("Retrying request to crt.sh...");
         }
-        self.inner.check_crtsh(fp)
     }
 }

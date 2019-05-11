@@ -5,7 +5,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use certificate_carver::crtsh::{
-    CachedCrtShServer, CrtShServer, DelayCrtShServer, RealCrtShServer,
+    CachedCrtShServer, CrtShServer, RealCrtShServer, RetryDelayCrtShServer,
 };
 use certificate_carver::ctlog::{LogInfo, LogShard, RealLogServers};
 use certificate_carver::Carver;
@@ -206,7 +206,7 @@ fn main() {
     let mut carver = Carver::new(logs);
     let client = reqwest::Client::new();
     let crtsh = RealCrtShServer::new(&client);
-    let crtsh = DelayCrtShServer::new(&crtsh, Duration::new(5, 0));
+    let crtsh = RetryDelayCrtShServer::new(&crtsh, Duration::new(5, 0));
     let cache_dir = Path::new("certificate_carver_cache");
     let crtsh: Box<CrtShServer> = match CachedCrtShServer::new(&crtsh, cache_dir) {
         Ok(cached_crtsh) => Box::new(cached_crtsh),

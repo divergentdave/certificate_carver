@@ -5,7 +5,7 @@ mod mocks;
 use std::time::{Duration, Instant};
 
 use crate::mocks::MockCrtShServer;
-use certificate_carver::crtsh::{CachedCrtShServer, CrtShServer, DelayCrtShServer};
+use certificate_carver::crtsh::{CachedCrtShServer, CrtShServer, RetryDelayCrtShServer};
 use certificate_carver::CertificateFingerprint;
 
 #[test]
@@ -24,7 +24,7 @@ fn test_cache() {
 #[test]
 fn test_delay() {
     let crtsh = MockCrtShServer::default();
-    let crtsh = DelayCrtShServer::new(&crtsh, Duration::new(1, 0));
+    let crtsh = RetryDelayCrtShServer::new(&crtsh, Duration::new(1, 0));
     let fp = CertificateFingerprint([
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0,
