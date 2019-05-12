@@ -528,8 +528,12 @@ impl Carver {
 
                 println!("{}, doesn't chain, {} file paths", fp, info.paths.len());
             }
-            for path in info.paths.iter() {
+            let path_limit = 10;
+            for path in info.paths.iter().take(path_limit) {
                 println!("{}", path);
+            }
+            if info.paths.len() > path_limit {
+                println!("...");
             }
             println!();
         }
