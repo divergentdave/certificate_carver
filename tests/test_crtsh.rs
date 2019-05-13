@@ -9,7 +9,6 @@ use certificate_carver::crtsh::{CachedCrtShServer, CrtShServer, RetryDelayCrtShS
 use certificate_carver::CertificateFingerprint;
 
 #[test]
-#[ignore]
 fn test_cache() {
     let crtsh = MockCrtShServer::always_true();
     let crtsh = CachedCrtShServer::new_temporary(&crtsh).unwrap();
