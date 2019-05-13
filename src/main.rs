@@ -203,8 +203,19 @@ fn main() {
             NESSIE_YETI_ROOTS,
         ),
     ];
-    let mut carver = Carver::new(logs);
-    let client = reqwest::Client::new();
+
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::USER_AGENT,
+        reqwest::header::HeaderValue::from_static(
+            "certificate_carver (https://github.com/divergentdave/certificate_carver)",
+        ),
+    );
+    let client = reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .unwrap();
+
     let crtsh = RealCrtShServer::new(&client);
     let crtsh = RetryDelayCrtShServer::new(&crtsh, Duration::new(5, 0));
     let cache_dir = Path::new("certificate_carver_cache");
@@ -215,6 +226,9 @@ fn main() {
             Box::new(crtsh)
         }
     };
+
     let log_comms = RealLogServers::new(&client);
+
+    let mut carver = Carver::new(logs);
     carver.run(&args, crtsh.as_ref(), &log_comms);
 }
