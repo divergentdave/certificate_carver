@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 extern crate base64;
 extern crate chrono;
 extern crate copy_in_place;

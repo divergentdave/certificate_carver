@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 extern crate certificate_carver;
 
 use std::env::args;
