@@ -732,7 +732,7 @@ fn parse_time(input: &mut untrusted::Reader) -> Result<Year, Error> {
     fn read_digit(inner: &mut untrusted::Reader) -> Result<u64, Error> {
         let b = inner.read_byte().map_err(|_| Error::BadDERTimeValue)?;
         if b >= 0x30 && b <= 0x39 {
-            Ok((b - 0x30) as u64)
+            Ok(u64::from(b - 0x30))
         } else {
             Err(Error::BadDERTimeValue)
         }

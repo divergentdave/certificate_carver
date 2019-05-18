@@ -62,13 +62,14 @@ impl<'a> CrtShServer for CachedCrtShServer<'a> {
         if let Ok(Some(_)) = self.tree.get(fp.as_ref()) {
             return Ok(true);
         }
-        let result = self.inner.check_crtsh(fp)?;
-        if result {
-            if let Err(_) = self.tree.set(fp.as_ref().clone(), Vec::new()) {
+        let in_crtsh = self.inner.check_crtsh(fp)?;
+        if in_crtsh {
+            let sled_result = self.tree.set(fp.as_ref(), Vec::new());
+            if sled_result.is_err() {
                 println!("Warning: Couldn't write to cache file");
             }
         }
-        Ok(result)
+        Ok(in_crtsh)
     }
 }
 

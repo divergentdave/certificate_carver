@@ -294,7 +294,7 @@ impl Carver {
                     } else if let Some(m) = caps.name("XMLDSig") {
                         let tag_start = m.start();
                         let temp_start = m.end() - 1;
-                        match buf[temp_start..].iter().position(|&b| b == '>' as u8) {
+                        match buf[temp_start..].iter().position(|&b| b == b'>') {
                             None => {
                                 // The buffer has the beginning of an opening tag, but not its
                                 // closing angle bracket, try reading more if the buffer is too
@@ -400,7 +400,7 @@ impl Carver {
 
     fn scan_directory(&mut self, root: &str) {
         // TODO: parallelize? WalkDir doesn't have parallel iterator support yet
-        for entry in WalkDir::new(root).into_iter().filter_map(|e| e.ok()) {
+        for entry in WalkDir::new(root).into_iter().filter_map(Result::ok) {
             self.scan_file_path(entry.path());
         }
     }
