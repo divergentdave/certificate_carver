@@ -43,13 +43,16 @@ use crate::x509::{Certificate, NameInfo};
 
 const ZIP_MAGIC: [u8; 4] = [0x50, 0x4b, 3, 4];
 
+// This was removed from base64 in version 0.10.0
+fn copy_without_whitespace(input: &[u8]) -> Vec<u8> {
+    let mut input_copy = Vec::<u8>::with_capacity(input.len());
+    input_copy.extend(input.iter().filter(|b| !b" \n\t\r\x0b\x0c".contains(b)));
+
+    input_copy
+}
+
 fn pem_base64_config() -> base64::Config {
-    base64::Config::new(
-        base64::CharacterSet::Standard,
-        true,
-        true,
-        base64::LineWrap::Wrap(64, base64::LineEnding::CRLF),
-    )
+    base64::Config::new(base64::CharacterSet::Standard, true)
 }
 
 fn pem_base64_encode(input: &[u8]) -> String {
@@ -57,7 +60,8 @@ fn pem_base64_encode(input: &[u8]) -> String {
 }
 
 fn pem_base64_decode<T: ?Sized + AsRef<[u8]>>(input: &T) -> Result<Vec<u8>, base64::DecodeError> {
-    base64::decode_config(input, pem_base64_config())
+    let stripped = copy_without_whitespace(input.as_ref());
+    base64::decode_config(&stripped, pem_base64_config())
 }
 
 // should make separate types for fingerprints and cert der instead of using Vec<u8>
