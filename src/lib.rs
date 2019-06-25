@@ -37,6 +37,9 @@ use std::str;
 use walkdir::WalkDir;
 use zip::read::ZipArchive;
 
+#[cfg(unix)]
+use std::os::unix::fs::FileTypeExt;
+
 use crate::crtsh::CrtShServer;
 use crate::ctlog::{LogInfo, LogServers, TrustRoots};
 use crate::x509::{Certificate, NameInfo};
@@ -402,10 +405,32 @@ impl Carver {
         }
     }
 
+    #[cfg(not(unix))]
+    fn filter_file_metadata(&self, metadata: &std::fs::Metadata) -> bool {
+        metadata.len() > 0 && !metadata.file_type().is_symlink()
+    }
+
+    #[cfg(unix)]
+    fn filter_file_metadata(&self, metadata: &std::fs::Metadata) -> bool {
+        if metadata.len() == 0 {
+            return false;
+        }
+        let file_type = metadata.file_type();
+        !file_type.is_symlink()
+            && !file_type.is_block_device()
+            && !file_type.is_char_device()
+            && !file_type.is_fifo()
+            && !file_type.is_socket()
+    }
+
     fn scan_directory(&mut self, root: &str) {
         // TODO: parallelize? WalkDir doesn't have parallel iterator support yet
         for entry in WalkDir::new(root).into_iter().filter_map(Result::ok) {
-            self.scan_file_path(entry.path());
+            if let Ok(metadata) = entry.metadata() {
+                if self.filter_file_metadata(&metadata) {
+                    self.scan_file_path(entry.path());
+                }
+            }
         }
     }
 
@@ -414,7 +439,11 @@ impl Carver {
         if path.is_dir() {
             self.scan_directory(path_str);
         } else {
-            self.scan_file_path(path);
+            if let Ok(metadata) = path.symlink_metadata() {
+                if self.filter_file_metadata(&metadata) {
+                    self.scan_file_path(path);
+                }
+            }
         }
     }
 
