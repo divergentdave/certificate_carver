@@ -7,6 +7,7 @@ mod mocks;
 
 use reqwest::Url;
 use sha2::{Digest, Sha256};
+use std::path::PathBuf;
 
 use crate::mocks::{MockCrtShServer, MockLogServers};
 use certificate_carver::ctlog::{LogInfo, LogShard};
@@ -22,13 +23,13 @@ fn test_run() {
     )];
     let mut carver = Carver::new(logs);
     let mut args = Vec::new();
-    args.push(format!(
+    args.push(PathBuf::from(format!(
         "{}/tests/files/davidsherenowitsa.party",
         env!("CARGO_MANIFEST_DIR")
-    ));
+    )));
     let crtsh = MockCrtShServer::default();
     let log_comms = MockLogServers::new();
-    carver.run(&args, &crtsh, &log_comms);
+    carver.run(args.into_iter(), &crtsh, &log_comms);
 
     let mut chains = log_comms.submitted_chains.borrow_mut();
     chains.sort_by_key(|(url, chain)| -> (Url, Vec<Vec<u8>>) {
