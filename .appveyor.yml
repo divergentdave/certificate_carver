@@ -26,7 +26,7 @@ install:
   - set SCCACHE_VER=0.2.9
   - curl -sSL -o "%TEMP%\sccache-%SCCACHE_VER%-x86_64-pc-windows-msvc.tar.gz" "https://github.com/mozilla/sccache/releases/download/%SCCACHE_VER%/sccache-%SCCACHE_VER%-x86_64-pc-windows-msvc.tar.gz"
   - mkdir C:\sccache
-  - tar -xzf "%TEMP%\sccache-%SCCACHE_VER%-x86_64-pc-windows-msvc.tar.gz" --directory=C:\sccache
+  - tar -xzf "%TEMP%\sccache-%SCCACHE_VER%-x86_64-pc-windows-msvc.tar.gz" --directory=C:\sccache --force-local
   - set PATH=%PATH%;C:\sccache
   - sccache -V
   - set RUSTC_WRAPPER=sccache
