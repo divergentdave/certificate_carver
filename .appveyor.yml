@@ -41,6 +41,9 @@ test_script:
       cargo test --target %TARGET% --release
     )
 
+after_test:
+  - rmdir /s /q C:\Users\appveyor\.cargo\registry\src
+
 before_deploy:
   - cargo rustc --target %TARGET% --release --bin certificate_carver -- -C lto
   - ps: ci\before_deploy.ps1
