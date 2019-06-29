@@ -1,7 +1,3 @@
-extern crate base64;
-
-extern crate certificate_carver;
-
 use certificate_carver::CertificateBytes;
 
 // This was removed from base64 in version 0.10.0

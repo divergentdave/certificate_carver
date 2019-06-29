@@ -1,8 +1,3 @@
-extern crate reqwest;
-extern crate serde_json;
-
-extern crate certificate_carver;
-
 use reqwest::Url;
 use std::cell::RefCell;
 

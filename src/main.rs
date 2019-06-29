@@ -1,7 +1,5 @@
 #![forbid(unsafe_code)]
 
-extern crate certificate_carver;
-
 use clap::{App, Arg};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};

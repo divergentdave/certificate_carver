@@ -1,31 +1,11 @@
 #![forbid(unsafe_code)]
-
-extern crate base64;
-extern crate chrono;
-extern crate copy_in_place;
-extern crate encoding;
-extern crate hex;
-extern crate regex;
-extern crate reqwest;
-extern crate sha2;
-extern crate stringprep;
-extern crate unicode_normalization;
-extern crate untrusted;
-extern crate walkdir;
-extern crate zip;
-
-#[macro_use]
-extern crate lazy_static;
-
-#[macro_use]
-extern crate serde_derive;
-
 pub mod crtsh;
 pub mod ctlog;
 pub mod ldapprep;
 pub mod x509;
 
 use copy_in_place::copy_in_place;
+use lazy_static::lazy_static;
 use regex::bytes::Regex;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;

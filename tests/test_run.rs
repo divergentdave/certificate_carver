@@ -1,8 +1,3 @@
-extern crate reqwest;
-extern crate sha2;
-
-extern crate certificate_carver;
-
 mod mocks;
 
 use reqwest::Url;

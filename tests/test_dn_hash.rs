@@ -1,5 +1,3 @@
-extern crate certificate_carver;
-
 mod utils;
 
 use std::collections::hash_map::DefaultHasher;

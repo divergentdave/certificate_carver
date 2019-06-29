@@ -3,8 +3,9 @@ use crate::{
     CertificateChain, CertificateFingerprint,
 };
 use chrono::{Datelike, Utc};
-use lazy_static;
+use lazy_static::lazy_static;
 use reqwest::Url;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 #[derive(Deserialize)]

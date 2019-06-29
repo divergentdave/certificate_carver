@@ -1,5 +1,3 @@
-extern crate certificate_carver;
-
 mod utils;
 
 use certificate_carver::x509::Certificate;

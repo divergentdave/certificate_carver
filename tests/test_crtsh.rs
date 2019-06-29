@@ -1,5 +1,3 @@
-extern crate certificate_carver;
-
 mod mocks;
 
 use std::time::{Duration, Instant};

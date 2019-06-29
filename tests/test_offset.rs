@@ -1,5 +1,3 @@
-extern crate certificate_carver;
-
 use std::io::Cursor;
 
 use certificate_carver::Carver;
