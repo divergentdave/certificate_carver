@@ -57,7 +57,7 @@ deploy:
 
 cache:
   - C:\Users\appveyor\.cargo\registry
-  - %LocalAppData%\Mozilla\sccache
+  - "%LocalAppData%\Mozilla\sccache"
 
 branches:
   only:
