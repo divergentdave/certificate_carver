@@ -220,6 +220,12 @@ fn make_reqwest_client() -> reqwest::Client {
 
 fn main() {
     let matches = App::new("Certificate Carver")
+        .version("0.1.5")
+        .author("David Cook <divergentdave@gmail.com>")
+        .about(
+            "Certificate Carver searches files for X.509 certificates and \
+             uploads them to Certificate Transparency logs.",
+        )
         .arg(
             Arg::with_name("paths")
                 .takes_value(true)
