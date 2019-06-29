@@ -52,9 +52,9 @@ deploy:
 
 cache: cargo
 before_cache:
-  - rm -rf "$TRAVIS_HOME/.cargo/registry/src"
+  - rm -rf "$HOME/.cargo/registry/src"
   # Travis can't cache files that are not readable by "others"
-  - chmod -R a+r "$TRAVIS_HOME/.cargo"
+  - chmod -R a+r "$HOME/.cargo"
 
 branches:
   only:
