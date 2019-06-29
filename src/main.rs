@@ -2,8 +2,9 @@
 
 extern crate certificate_carver;
 
-use std::env::args;
-use std::path::Path;
+use clap::{App, Arg};
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use certificate_carver::crtsh::{
@@ -22,12 +23,8 @@ const ARGON_XENON_ROOTS: &str = include_str!("../roots/argon-xenon.json");
 const NIMBUS_ROOTS: &str = include_str!("../roots/nimbus.json");
 const NESSIE_YETI_ROOTS: &str = include_str!("../roots/nessie-yeti.json");
 
-fn main() {
-    let args = args().skip(1).collect::<Vec<String>>();
-    if args.is_empty() {
-        panic!("pass at least one directory as a command line argument");
-    }
-    let logs = vec![
+fn make_log_list() -> Vec<LogInfo> {
+    vec![
         LogInfo::new(
             "https://ct.googleapis.com/pilot/",
             LogShard::Any,
@@ -204,8 +201,10 @@ fn main() {
             LogShard::ExpiryYear(2022),
             NESSIE_YETI_ROOTS,
         ),
-    ];
+    ]
+}
 
+fn make_reqwest_client() -> reqwest::Client {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
         reqwest::header::USER_AGENT,
@@ -213,10 +212,29 @@ fn main() {
             "certificate_carver (https://github.com/divergentdave/certificate_carver)",
         ),
     );
-    let client = reqwest::Client::builder()
+    reqwest::Client::builder()
         .default_headers(headers)
         .build()
-        .unwrap();
+        .unwrap()
+}
+
+fn main() {
+    let matches = App::new("Certificate Carver")
+        .arg(
+            Arg::with_name("paths")
+                .takes_value(true)
+                .multiple(true)
+                .required(true)
+                .min_values(1)
+                .help("File or directory paths"),
+        )
+        .get_matches();
+    let paths = matches
+        .values_of_os("paths")
+        .unwrap()
+        .map(|osstr: &OsStr| -> PathBuf { From::from(osstr) });
+
+    let client = make_reqwest_client();
 
     let crtsh = RealCrtShServer::new(&client);
     let crtsh = RetryDelayCrtShServer::new(&crtsh, Duration::new(5, 0));
@@ -231,6 +249,7 @@ fn main() {
 
     let log_comms = RealLogServers::new(&client);
 
+    let logs = make_log_list();
     let mut carver = Carver::new(logs);
-    carver.run(&args, crtsh.as_ref(), &log_comms);
+    carver.run(paths, crtsh.as_ref(), &log_comms);
 }

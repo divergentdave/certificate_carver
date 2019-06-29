@@ -32,7 +32,7 @@ use std::convert::TryInto;
 use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
 use std::io::{stdout, Cursor, Read, Seek, SeekFrom};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str;
 use walkdir::WalkDir;
 use zip::read::ZipArchive;
@@ -423,9 +423,9 @@ impl Carver {
             && !file_type.is_socket()
     }
 
-    fn scan_directory(&mut self, root: &str) {
+    fn scan_directory(&mut self, path: &Path) {
         // TODO: parallelize? WalkDir doesn't have parallel iterator support yet
-        for entry in WalkDir::new(root).into_iter().filter_map(Result::ok) {
+        for entry in WalkDir::new(path).into_iter().filter_map(Result::ok) {
             if let Ok(metadata) = entry.metadata() {
                 if self.filter_file_metadata(&metadata) {
                     self.scan_file_path(entry.path());
@@ -434,10 +434,9 @@ impl Carver {
         }
     }
 
-    pub fn scan_directory_or_file(&mut self, path_str: &str) {
-        let path = Path::new(path_str);
+    pub fn scan_directory_or_file(&mut self, path: &Path) {
         if path.is_dir() {
-            self.scan_directory(path_str);
+            self.scan_directory(path);
         } else {
             if let Ok(metadata) = path.symlink_metadata() {
                 if self.filter_file_metadata(&metadata) {
@@ -516,9 +515,12 @@ impl Carver {
             .collect()
     }
 
-    pub fn run(&mut self, args: &[String], crtsh: &CrtShServer, log_comms: &LogServers) {
-        for arg in args.iter() {
-            self.scan_directory_or_file(&arg);
+    pub fn run<I>(&mut self, paths: I, crtsh: &CrtShServer, log_comms: &LogServers)
+    where
+        I: Iterator<Item = PathBuf>,
+    {
+        for path in paths {
+            self.scan_directory_or_file(path.as_path());
         }
         let mut all_roots_vec = Vec::new();
         for log in self.logs.iter_mut() {
