@@ -17,5 +17,5 @@ Examples:
 ```
 
 ```
-cargo run /path/to/directory
+cargo run -- /path/to/directory
 ```
