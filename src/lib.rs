@@ -191,16 +191,18 @@ impl Carver {
 
     pub fn add_cert(&mut self, der: CertificateBytes, path: &str) {
         if let Ok(cert) = Certificate::parse(der) {
-            let digest = cert.fingerprint();
-            let subject = cert.get_subject().clone();
+            if cert.looks_like_ca() || cert.looks_like_server() {
+                let digest = cert.fingerprint();
+                let subject = cert.get_subject().clone();
 
-            let entry = self.fp_map.entry(digest);
-            let info = entry.or_insert_with(|| CertificateRecord::new(cert));
-            info.paths.push(String::from(path));
+                let entry = self.fp_map.entry(digest);
+                let info = entry.or_insert_with(|| CertificateRecord::new(cert));
+                info.paths.push(String::from(path));
 
-            let entry = self.subject_map.entry(subject);
-            let fp_vec = entry.or_insert_with(HashSet::new);
-            fp_vec.insert(digest);
+                let entry = self.subject_map.entry(subject);
+                let fp_vec = entry.or_insert_with(HashSet::new);
+                fp_vec.insert(digest);
+            }
         }
     }
 

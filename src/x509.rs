@@ -13,13 +13,19 @@ use crate::ldapprep::ldapprep_case_insensitive;
 const CONSTRUCTED: u8 = 1 << 5;
 const CONTEXT_SPECIFIC: u8 = 2 << 6;
 
+const DER_OID_EXTENSION_BASIC_CONSTRAINTS: [u8; 3] = [0x55, 0x1D, 0x13];
+const DER_OID_EXTENSION_KEY_USAGE: [u8; 3] = [0x55, 0x1D, 0x0F];
+const DER_OID_EXTENSION_EXTENDED_KEY_USAGE: [u8; 3] = [0x55, 0x1D, 0x25];
+const DER_OID_EKU_SERVER_AUTH: [u8; 8] = [0x2B, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x01];
+const DER_OID_EKU_ANY_EKU: [u8; 4] = [0x55, 0x1D, 0x25, 0x00];
+
 #[derive(Clone, Copy, PartialEq)]
 #[repr(u8)]
 enum Tag {
-    // Boolean = 0x01,
+    Boolean = 0x01,
     Integer = 0x02,
     BitString = 0x03,
-    // OctetString = 0x04,
+    OctetString = 0x04,
     // Null = 0x05,
     OID = 0x06,
     Utf8String = 0x0C,
@@ -31,7 +37,7 @@ enum Tag {
     Set = CONSTRUCTED | 0x11,      // 0x31
     // UTCTime = 0x17,
     // GeneralizedTime = 0x18,
-    ContextSpecificConstructed0 = CONTEXT_SPECIFIC | CONSTRUCTED | 0,
+    ContextSpecificConstructed0 = CONTEXT_SPECIFIC | CONSTRUCTED,
     // ContextSpecificConstructed1 = CONTEXT_SPECIFIC | CONSTRUCTED | 1,
     ContextSpecificConstructed3 = CONTEXT_SPECIFIC | CONSTRUCTED | 3,
 }
@@ -60,27 +66,51 @@ const NAME_ATTRIBUTES_DESCRIPTIONS: [(NameType, &str); 14] = [
 pub struct Certificate {
     bytes: CertificateBytes,
     fp: CertificateFingerprint,
-    not_after_year: Year,
     issuer: NameInfo,
     subject: NameInfo,
+    not_after_year: Year,
+    has_basic_constraints: bool,
+    basic_constraints_ca: bool,
+    has_ku: bool,
+    ku_tls_handshake: bool,
+    has_eku: bool,
+    eku_server_auth: bool,
+}
+
+struct CertificateInternal {
+    issuer: NameInfo,
+    subject: NameInfo,
+    not_after_year: Year,
+    has_basic_constraints: bool,
+    basic_constraints_ca: bool,
+    has_ku: bool,
+    ku_tls_handshake: bool,
+    has_eku: bool,
+    eku_server_auth: bool,
 }
 
 impl Certificate {
     pub fn parse(bytes: CertificateBytes) -> Result<Certificate, Error> {
-        let (issuer, subject, not_after_year) = Certificate::parse_cert_contents(bytes.as_ref())?;
+        let cert_internal = Certificate::parse_cert_contents(bytes.as_ref())?;
         let mut arr: [u8; 32] = Default::default();
         arr.copy_from_slice(&Sha256::digest(bytes.as_ref()));
         let fp = CertificateFingerprint(arr);
         Ok(Certificate {
             bytes,
             fp,
-            not_after_year,
-            issuer,
-            subject,
+            issuer: cert_internal.issuer,
+            subject: cert_internal.subject,
+            not_after_year: cert_internal.not_after_year,
+            has_basic_constraints: cert_internal.has_basic_constraints,
+            basic_constraints_ca: cert_internal.basic_constraints_ca,
+            has_ku: cert_internal.has_ku,
+            ku_tls_handshake: cert_internal.ku_tls_handshake,
+            has_eku: cert_internal.has_eku,
+            eku_server_auth: cert_internal.eku_server_auth,
         })
     }
 
-    fn parse_cert_contents(bytes: &[u8]) -> Result<(NameInfo, NameInfo, Year), Error> {
+    fn parse_cert_contents(bytes: &[u8]) -> Result<CertificateInternal, Error> {
         let cert_der = untrusted::Input::from(bytes);
         let tbs_der = cert_der.read_all(Error::BadDERCertificateExtraData, |cert_der| {
             nested(
@@ -91,59 +121,80 @@ impl Certificate {
                 parse_signed_data,
             )
         })?;
-        let (issuer, subject, not_after_year) =
-            tbs_der.read_all(Error::BadDERCertificate, |tbs_der| {
-                let (first_tag, _first_value) =
+        tbs_der.read_all(Error::BadDERCertificate, |tbs_der| {
+            let (first_tag, _first_value) =
+                read_tag_and_get_value(tbs_der, Error::BadDERSerialNumber)?;
+            let next_tag = if (first_tag as usize) == (Tag::ContextSpecificConstructed0 as usize) {
+                // skip version number, if present
+                let (next_tag, _next_value) =
                     read_tag_and_get_value(tbs_der, Error::BadDERSerialNumber)?;
-                let next_tag =
-                    if (first_tag as usize) == (Tag::ContextSpecificConstructed0 as usize) {
-                        // skip version number, if present
-                        let (next_tag, _next_value) =
-                            read_tag_and_get_value(tbs_der, Error::BadDERSerialNumber)?;
-                        next_tag
-                    } else {
-                        first_tag
-                    };
+                next_tag
+            } else {
+                first_tag
+            };
 
-                // skip serial number, either the first or second tag
-                if (next_tag as usize) != (Tag::Integer as usize) {
-                    return Err(Error::SerialNumberNotInteger);
-                }
+            // skip serial number, either the first or second tag
+            if (next_tag as usize) != (Tag::Integer as usize) {
+                return Err(Error::SerialNumberNotInteger);
+            }
 
-                skip(tbs_der, Tag::Sequence, Error::BadDERSignatureInTBS)?;
+            skip(tbs_der, Tag::Sequence, Error::BadDERSignatureInTBS)?;
 
-                let issuer = expect_tag_and_get_value(tbs_der, Tag::Sequence, Error::BadDERIssuer)?;
-                let issuer = copy_input(&issuer);
+            let issuer = expect_tag_and_get_value(tbs_der, Tag::Sequence, Error::BadDERIssuer)?;
+            let issuer = copy_input(&issuer);
 
-                let not_after_year = nested(
+            let not_after_year = nested(
+                tbs_der,
+                Tag::Sequence,
+                Error::BadDERValidity,
+                Error::BadDERValidityExtraData,
+                parse_validity,
+            )?;
+
+            let subject = expect_tag_and_get_value(tbs_der, Tag::Sequence, Error::BadDERSubject)?;
+            let subject = copy_input(&subject);
+
+            skip(tbs_der, Tag::Sequence, Error::BadDERSPKI)?;
+
+            let (
+                has_basic_constraints,
+                basic_constraints_ca,
+                has_ku,
+                ku_tls_handshake,
+                has_eku,
+                eku_server_auth,
+            ) = if tbs_der.at_end() {
+                (false, false, false, false, false, false)
+            } else {
+                nested(
                     tbs_der,
-                    Tag::Sequence,
-                    Error::BadDERValidity,
-                    Error::BadDERValidityExtraData,
-                    parse_validity,
-                )?;
+                    Tag::ContextSpecificConstructed3,
+                    Error::BadDERExtensions,
+                    Error::BadDERExtensionsExtraData,
+                    |der| {
+                        nested(
+                            der,
+                            Tag::Sequence,
+                            Error::BadDERExtensions,
+                            Error::BadDERExtensionsExtraData,
+                            parse_extensions,
+                        )
+                    },
+                )?
+            };
 
-                let subject =
-                    expect_tag_and_get_value(tbs_der, Tag::Sequence, Error::BadDERSubject)?;
-                let subject = copy_input(&subject);
-
-                skip(tbs_der, Tag::Sequence, Error::BadDERSPKI)?;
-
-                if !tbs_der.at_end() {
-                    skip(
-                        tbs_der,
-                        Tag::ContextSpecificConstructed3,
-                        Error::BadDERExtensions,
-                    )?;
-                }
-
-                Ok((issuer, subject, not_after_year))
-            })?;
-        Ok((
-            NameInfo::new(issuer),
-            NameInfo::new(subject),
-            not_after_year,
-        ))
+            Ok(CertificateInternal {
+                issuer: NameInfo::new(issuer),
+                subject: NameInfo::new(subject),
+                not_after_year,
+                has_basic_constraints,
+                basic_constraints_ca,
+                has_ku,
+                ku_tls_handshake,
+                has_eku,
+                eku_server_auth,
+            })
+        })
     }
 
     pub fn fingerprint(&self) -> CertificateFingerprint {
@@ -175,6 +226,14 @@ impl Certificate {
 
     pub fn get_not_after_year(&self) -> u64 {
         self.not_after_year.0
+    }
+
+    pub fn looks_like_ca(&self) -> bool {
+        !self.has_basic_constraints || self.basic_constraints_ca
+    }
+
+    pub fn looks_like_server(&self) -> bool {
+        (!self.has_ku || self.ku_tls_handshake) && (!self.has_eku || self.eku_server_auth)
     }
 }
 
@@ -576,6 +635,16 @@ pub enum Error {
     BadDERSubject,
     BadDERSPKI,
     BadDERExtensions,
+    BadDERExtensionsExtraData,
+    BadDERExtension,
+    BadDERExtensionExtraData,
+    BadDERExtensionID,
+    BadDERBasicConstraints,
+    BadDERBasicConstraintsExtraData,
+    BadDERKeyUsage,
+    BadDERKeyUsageExtraData,
+    BadDERExtendedKeyUsage,
+    BadDERExtendedKeyUsageExtraData,
     BadDERDistinguishedNameExtraData,
     BadDERRelativeDistinguishedName,
     BadDERRelativeDistinguishedNameExtraData,
@@ -606,6 +675,16 @@ impl std::fmt::Display for Error {
             Error::BadDERSubject => write!(f, "DER error encountered while parsing subject"),
             Error::BadDERSPKI => write!(f, "DER error encountered while parsing SubjectPublicKeyIdentifier"),
             Error::BadDERExtensions => write!(f, "DER error encountered while parsing extensions"),
+            Error::BadDERExtensionsExtraData => write!(f, "DER error encountered while parsing extensions due to extra data"),
+            Error::BadDERExtension => write!(f, "DER error encountered while parsing an extension"),
+            Error::BadDERExtensionExtraData => write!(f, "DER error encountered while parsing an extension due to extra data"),
+            Error::BadDERExtensionID => write!(f, "DER error encountered while parsing an extension ID"),
+            Error::BadDERBasicConstraints => write!(f, "DER error encountered while parsing a basicConstraints extension"),
+            Error::BadDERBasicConstraintsExtraData => write!(f, "DER error encountered while parsing a basicConstraints extension due to extra data"),
+            Error::BadDERKeyUsage => write!(f, "DER error encountered while parsing an keyUsage extension"),
+            Error::BadDERKeyUsageExtraData => write!(f, "DER error encountered while parsing an keyUsage extension due to extra data"),
+            Error::BadDERExtendedKeyUsage => write!(f, "DER error encountered while parsing an extKeyUsage extension"),
+            Error::BadDERExtendedKeyUsageExtraData => write!(f, "DER error encountered while parsing an extKeyUsage extension due to extra data"),
             Error::BadDERDistinguishedNameExtraData => write!(f, "DER error encountered while parsing DistinguishedName due to extra data"),
             Error::BadDERRelativeDistinguishedName => write!(f, "DER error encountered while parsing RelativeDistinguishedName"),
             Error::BadDERRelativeDistinguishedNameExtraData => write!(f, "DER error encountered while parsing RelativeDistinguishedName due to extra data"),
@@ -706,6 +785,129 @@ fn parse_signed_data<'a>(der: &mut untrusted::Reader<'a>) -> Result<untrusted::I
     let _algorithm = expect_tag_and_get_value(der, Tag::Sequence, Error::BadDERAlgorithm)?;
     let _signature = bit_string_with_no_unused_bits(der, Error::BadDERSignature2)?;
     Ok(tbs)
+}
+
+fn parse_extensions(
+    der: &mut untrusted::Reader,
+) -> Result<(bool, bool, bool, bool, bool, bool), Error> {
+    let mut has_basic_constraints = false;
+    let mut basic_constraints_ca = false;
+    let mut has_ku = false;
+    let mut ku_tls_handshake = false;
+    let mut has_eku = false;
+    let mut eku_server_auth = false;
+    while !der.at_end() {
+        nested(
+            der,
+            Tag::Sequence,
+            Error::BadDERExtension,
+            Error::BadDERExtensionExtraData,
+            |der| {
+                let id = expect_tag_and_get_value(der, Tag::OID, Error::BadDERExtensionID)?;
+                let (next_tag, next_value) = read_tag_and_get_value(der, Error::BadDERExtension)?;
+                let value = if next_tag == Tag::Boolean as u8 {
+                    expect_tag_and_get_value(der, Tag::OctetString, Error::BadDERExtension)?
+                } else if next_tag == Tag::OctetString as u8 {
+                    next_value
+                } else {
+                    return Err(Error::BadDERExtension);
+                };
+
+                let id = copy_input(&id);
+                let mut value = untrusted::Reader::new(value);
+                if id == DER_OID_EXTENSION_BASIC_CONSTRAINTS {
+                    let result = nested(
+                        &mut value,
+                        Tag::Sequence,
+                        Error::BadDERBasicConstraints,
+                        Error::BadDERBasicConstraintsExtraData,
+                        |der| {
+                            if der.at_end() {
+                                Ok(false)
+                            } else {
+                                let (tag, value) =
+                                    read_tag_and_get_value(der, Error::BadDERBasicConstraints)?;
+                                let value = copy_input(&value);
+                                if tag == Tag::Boolean as u8 {
+                                    let result = value.into_iter().any(|b| b != 0);
+                                    if !der.at_end() {
+                                        expect_tag_and_get_value(
+                                            der,
+                                            Tag::Integer,
+                                            Error::BadDERBasicConstraints,
+                                        )?;
+                                    }
+                                    Ok(result)
+                                } else if tag == Tag::Integer as u8 {
+                                    Ok(false)
+                                } else {
+                                    Err(Error::BadDERBasicConstraints)
+                                }
+                            }
+                        },
+                    );
+                    if let Ok(ca) = result {
+                        has_basic_constraints = true;
+                        basic_constraints_ca = ca;
+                    }
+                } else if id == DER_OID_EXTENSION_KEY_USAGE {
+                    let result = nested(
+                        &mut value,
+                        Tag::BitString,
+                        Error::BadDERKeyUsage,
+                        Error::BadDERKeyUsageExtraData,
+                        |der| {
+                            let _unused_bits_at_end =
+                                der.read_byte().map_err(|_| Error::BadDERKeyUsage)?;
+                            let byte = der.read_byte().unwrap_or(0);
+                            Ok(byte)
+                        },
+                    );
+                    if let Ok(byte) = result {
+                        has_ku = true;
+                        // Check if the digitalSignature(0), keyEncipherment(2),
+                        // or keyAgreement(4) bits are set
+                        ku_tls_handshake = byte & 0xA8 != 0;
+                    }
+                } else if id == DER_OID_EXTENSION_EXTENDED_KEY_USAGE {
+                    let result = nested(
+                        &mut value,
+                        Tag::Sequence,
+                        Error::BadDERExtendedKeyUsage,
+                        Error::BadDERExtendedKeyUsageExtraData,
+                        |der| {
+                            let mut server_auth = false;
+                            while !der.at_end() {
+                                let oid = expect_tag_and_get_value(
+                                    der,
+                                    Tag::OID,
+                                    Error::BadDERExtendedKeyUsage,
+                                )?;
+                                let oid = copy_input(&oid);
+                                if oid == DER_OID_EKU_SERVER_AUTH || oid == DER_OID_EKU_ANY_EKU {
+                                    server_auth = true;
+                                }
+                            }
+                            Ok(server_auth)
+                        },
+                    );
+                    if let Ok(server_auth) = result {
+                        has_eku = true;
+                        eku_server_auth = server_auth;
+                    }
+                }
+                Ok(())
+            },
+        )?;
+    }
+    Ok((
+        has_basic_constraints,
+        basic_constraints_ca,
+        has_ku,
+        ku_tls_handshake,
+        has_eku,
+        eku_server_auth,
+    ))
 }
 
 fn bit_string_with_no_unused_bits<'a>(
