@@ -5,6 +5,7 @@ pub mod ldapprep;
 pub mod x509;
 
 use copy_in_place::copy_in_place;
+use jwalk::WalkDir;
 use lazy_static::lazy_static;
 use regex::bytes::Regex;
 use std::collections::{HashMap, HashSet};
@@ -14,7 +15,6 @@ use std::fs::File;
 use std::io::{stdout, Cursor, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::str;
-use walkdir::WalkDir;
 use zip::read::ZipArchive;
 
 #[cfg(unix)]
@@ -406,12 +406,14 @@ impl Carver {
     }
 
     fn scan_directory(&mut self, path: &Path) {
-        // TODO: parallelize? WalkDir doesn't have parallel iterator support yet
-        for entry in WalkDir::new(path).into_iter().filter_map(Result::ok) {
-            if let Ok(metadata) = entry.metadata() {
-                if self.filter_file_metadata(&metadata) {
-                    self.scan_file_path(entry.path());
-                }
+        let walkdir = WalkDir::new(path).preload_metadata(true);
+        for entry in walkdir.into_iter().filter_map(Result::ok) {
+            let should_scan = match entry.metadata {
+                Some(Ok(ref metadata)) => self.filter_file_metadata(metadata),
+                _ => false,
+            };
+            if should_scan {
+                self.scan_file_path(&entry.path());
             }
         }
     }
