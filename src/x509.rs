@@ -63,13 +63,21 @@ const NAME_ATTRIBUTES_DESCRIPTIONS: [(NameType, &str); 14] = [
 ];
 
 #[derive(Clone)]
+pub enum X509Version {
+    V1 = 0,
+    V2 = 1,
+    V3 = 2,
+    Unknown,
+}
+
+#[derive(Clone)]
 pub struct Certificate {
     bytes: CertificateBytes,
     fp: CertificateFingerprint,
+    version: X509Version,
     issuer: NameInfo,
     subject: NameInfo,
     not_after_year: Year,
-    has_basic_constraints: bool,
     basic_constraints_ca: bool,
     has_ku: bool,
     ku_tls_handshake: bool,
@@ -78,10 +86,10 @@ pub struct Certificate {
 }
 
 struct CertificateInternal {
+    version: X509Version,
     issuer: NameInfo,
     subject: NameInfo,
     not_after_year: Year,
-    has_basic_constraints: bool,
     basic_constraints_ca: bool,
     has_ku: bool,
     ku_tls_handshake: bool,
@@ -98,10 +106,10 @@ impl Certificate {
         Ok(Certificate {
             bytes,
             fp,
+            version: cert_internal.version,
             issuer: cert_internal.issuer,
             subject: cert_internal.subject,
             not_after_year: cert_internal.not_after_year,
-            has_basic_constraints: cert_internal.has_basic_constraints,
             basic_constraints_ca: cert_internal.basic_constraints_ca,
             has_ku: cert_internal.has_ku,
             ku_tls_handshake: cert_internal.ku_tls_handshake,
@@ -122,15 +130,40 @@ impl Certificate {
             )
         })?;
         tbs_der.read_all(Error::BadDERCertificate, |tbs_der| {
-            let (first_tag, _first_value) =
+            let (first_tag, first_value) =
                 read_tag_and_get_value(tbs_der, Error::BadDERSerialNumber)?;
-            let next_tag = if (first_tag as usize) == (Tag::ContextSpecificConstructed0 as usize) {
-                // skip version number, if present
-                let (next_tag, _next_value) =
-                    read_tag_and_get_value(tbs_der, Error::BadDERSerialNumber)?;
-                next_tag
+            let (version, next_tag) =
+                // Version is present
+                if (first_tag as usize) == (Tag::ContextSpecificConstructed0 as usize) {
+                    let mut version_input = untrusted::Reader::new(first_value);
+                    let version = nested(
+                        &mut version_input,
+                        Tag::Integer,
+                        Error::BadDERVersion,
+                        Error::BadDERVersion,
+                        |der| {
+                            let byte = der.read_byte();
+                            if !der.at_end() {
+                                while !der.at_end() {
+                                    let _ = der.read_byte();
+                                }
+                                return Ok(X509Version::Unknown);
+                            }
+                            match byte {
+                                Ok(0) => Ok(X509Version::V1),
+                                Ok(1) => Ok(X509Version::V2),
+                                Ok(2) => Ok(X509Version::V3),
+                                Ok(_) => Ok(X509Version::Unknown),
+                                Err(_) => Err(Error::BadDERVersion),
+                            }
+                        }
+                    )?;
+                    let (next_tag, _next_value) =
+                        read_tag_and_get_value(tbs_der, Error::BadDERSerialNumber)?;
+                    (version, next_tag)
             } else {
-                first_tag
+                // Version is not present, the first TLV should be for the serial number
+                (X509Version::V1, first_tag)
             };
 
             // skip serial number, either the first or second tag
@@ -156,15 +189,8 @@ impl Certificate {
 
             skip(tbs_der, Tag::Sequence, Error::BadDERSPKI)?;
 
-            let (
-                has_basic_constraints,
-                basic_constraints_ca,
-                has_ku,
-                ku_tls_handshake,
-                has_eku,
-                eku_server_auth,
-            ) = if tbs_der.at_end() {
-                (false, false, false, false, false, false)
+            let extension_flags = if tbs_der.at_end() {
+                Default::default()
             } else {
                 nested(
                     tbs_der,
@@ -184,15 +210,15 @@ impl Certificate {
             };
 
             Ok(CertificateInternal {
+                version,
                 issuer: NameInfo::new(issuer),
                 subject: NameInfo::new(subject),
                 not_after_year,
-                has_basic_constraints,
-                basic_constraints_ca,
-                has_ku,
-                ku_tls_handshake,
-                has_eku,
-                eku_server_auth,
+                basic_constraints_ca: extension_flags.basic_constraints_ca,
+                has_ku: extension_flags.has_ku,
+                ku_tls_handshake: extension_flags.ku_tls_handshake,
+                has_eku: extension_flags.has_eku,
+                eku_server_auth: extension_flags.eku_server_auth,
             })
         })
     }
@@ -229,7 +255,12 @@ impl Certificate {
     }
 
     pub fn looks_like_ca(&self) -> bool {
-        !self.has_basic_constraints || self.basic_constraints_ca
+        match self.version {
+            X509Version::V1 => false, // Would need out-of-band trust information
+            X509Version::V2 => false,
+            X509Version::V3 => self.basic_constraints_ca,
+            X509Version::Unknown => self.basic_constraints_ca,
+        }
     }
 
     pub fn looks_like_server(&self) -> bool {
@@ -625,6 +656,7 @@ pub enum Error {
     BadDERCertificateExtraData,
     BadDERTBSCertificateWrongTag,
     BadDERTBSCertificateExtraData,
+    BadDERVersion,
     BadDERSerialNumber,
     BadDERSignatureInTBS,
     BadDERIssuer,
@@ -665,6 +697,7 @@ impl std::fmt::Display for Error {
             Error::BadDERCertificateExtraData => write!(f, "DER error encountered while parsing Certificate due to extra data"),
             Error::BadDERTBSCertificateWrongTag => write!(f, "DER error encountered while parsing TBSCertificate due to an incorrect tag"),
             Error::BadDERTBSCertificateExtraData => write!(f, "DER error encountered while parsing TBSCertificate due to extra data"),
+            Error::BadDERVersion => write!(f, "DER error encountered while parsing version"),
             Error::BadDERSerialNumber => write!(f, "DER error encountered while parsing serial number"),
             Error::BadDERSignatureInTBS => write!(f, "DER error encountered while parsing signature informatin in TBSCertificate"),
             Error::BadDERIssuer => write!(f, "DER error encountered while parsing issuer"),
@@ -787,10 +820,27 @@ fn parse_signed_data<'a>(der: &mut untrusted::Reader<'a>) -> Result<untrusted::I
     Ok(tbs)
 }
 
-fn parse_extensions(
-    der: &mut untrusted::Reader,
-) -> Result<(bool, bool, bool, bool, bool, bool), Error> {
-    let mut has_basic_constraints = false;
+struct ExtensionFlags {
+    basic_constraints_ca: bool,
+    has_ku: bool,
+    ku_tls_handshake: bool,
+    has_eku: bool,
+    eku_server_auth: bool,
+}
+
+impl Default for ExtensionFlags {
+    fn default() -> ExtensionFlags {
+        ExtensionFlags {
+            basic_constraints_ca: true,
+            has_ku: true,
+            ku_tls_handshake: true,
+            has_eku: true,
+            eku_server_auth: true,
+        }
+    }
+}
+
+fn parse_extensions(der: &mut untrusted::Reader) -> Result<ExtensionFlags, Error> {
     let mut basic_constraints_ca = false;
     let mut has_ku = false;
     let mut ku_tls_handshake = false;
@@ -847,7 +897,6 @@ fn parse_extensions(
                         },
                     );
                     if let Ok(ca) = result {
-                        has_basic_constraints = true;
                         basic_constraints_ca = ca;
                     }
                 } else if id == DER_OID_EXTENSION_KEY_USAGE {
@@ -900,14 +949,13 @@ fn parse_extensions(
             },
         )?;
     }
-    Ok((
-        has_basic_constraints,
+    Ok(ExtensionFlags {
         basic_constraints_ca,
         has_ku,
         ku_tls_handshake,
         has_eku,
         eku_server_auth,
-    ))
+    })
 }
 
 fn bit_string_with_no_unused_bits<'a>(
