@@ -15,7 +15,7 @@ use std::fs::File;
 use std::io::{stdout, Cursor, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::str;
-use zip::read::ZipArchive;
+use zip::read::read_zipfile_from_stream;
 
 #[cfg(unix)]
 use std::os::unix::fs::FileTypeExt;
@@ -357,11 +357,13 @@ impl Carver {
         }
         if magic == ZIP_MAGIC {
             let mut results = Vec::new();
-            if let Ok(mut archive) = ZipArchive::new(&mut file) {
-                for i in 0..archive.len() {
-                    if let Ok(mut entry) = archive.by_index(i) {
-                        results.append(&mut self.carve_stream(&mut entry));
+            loop {
+                match read_zipfile_from_stream(&mut file) {
+                    Ok(Some(mut zip_file)) => {
+                        results.append(&mut self.carve_stream(&mut zip_file));
                     }
+                    Ok(None) => break,
+                    Err(_) => break,
                 }
             }
             match file.seek(SeekFrom::Start(0)) {
