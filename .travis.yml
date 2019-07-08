@@ -9,6 +9,13 @@ env:
 matrix:
   include:
     - env: TARGET=i686-unknown-linux-gnu
+      addons:
+        apt:
+          packages:
+            - libc6:i686
+            - libgcc1:i686
+            - libstdc++6:i686
+            - zlib1g:i686
     - env: TARGET=x86_64-unknown-linux-gnu
     - env: TARGET=x86_64-apple-darwin
       os: osx
