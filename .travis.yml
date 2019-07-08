@@ -26,6 +26,7 @@ matrix:
       os: osx
 
 before_install:
+  - rustup target add i686-unknown-linux-gnu
   - rustup self update
 
   - export SCCACHE_VER=0.2.9 RUSTC_WRAPPER=sccache
