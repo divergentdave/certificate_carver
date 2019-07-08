@@ -26,7 +26,7 @@ matrix:
       os: osx
 
 before_install:
-  - rustup target add i686-unknown-linux-gnu
+  - if [ "$TARGET" = "i686-unknown-linux-gnu" ]; then rustup target add $TARGET; fi
   - rustup self update
 
   - export SCCACHE_VER=0.2.9 RUSTC_WRAPPER=sccache
