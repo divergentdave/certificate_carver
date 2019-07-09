@@ -60,7 +60,6 @@ script:
   - if [ -z $TRAVIS_TAG ] && [ -z $DISABLE_TESTS ]; then cargo test --target $TARGET --release; fi
 
 before_deploy:
-  - sh ci/before_deploy.sh
   - export src=$(pwd)
   - case "$TRAVIS_OS_NAME" in
       linux)
