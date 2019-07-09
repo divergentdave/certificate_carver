@@ -218,7 +218,7 @@ fn make_reqwest_client() -> reqwest::Client {
 
 fn main() {
     let matches = App::new("Certificate Carver")
-        .version("0.1.6-alpha")
+        .version("0.1.6-rc1")
         .author("David Cook <divergentdave@gmail.com>")
         .about(
             "Certificate Carver searches files for X.509 certificates and \
