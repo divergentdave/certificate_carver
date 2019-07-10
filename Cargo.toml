@@ -1,6 +1,6 @@
 [package]
 name = "certificate_carver"
-version = "0.1.6-rc2"
+version = "0.1.6"
 authors = ["David Cook <divergentdave@gmail.com>"]
 edition = "2018"
 
