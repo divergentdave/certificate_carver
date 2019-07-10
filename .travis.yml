@@ -11,6 +11,7 @@ matrix:
     - env:
         - TARGET=i686-unknown-linux-gnu
         - PKG_CONFIG_ALLOW_CROSS=1
+        - CACHE_SCCACHE_DIR="$HOME/.cache/sccache"
       addons:
         apt:
           packages:
@@ -23,8 +24,12 @@ matrix:
             - libssl-dev:i386
             - libstdc++6:i386
             - zlib1g:i386
-    - env: TARGET=x86_64-unknown-linux-gnu
-    - env: TARGET=x86_64-apple-darwin
+    - env:
+        - TARGET=x86_64-unknown-linux-gnu
+        - CACHE_SCCACHE_DIR="$HOME/.cache/sccache"
+    - env:
+        - TARGET=x86_64-apple-darwin
+        - CACHE_SCCACHE_DIR="$HOME/Library/Caches/Mozilla.sccache"
       os: osx
 
 before_install:
@@ -89,7 +94,7 @@ cache:
   directories:
     - "$HOME/.cargo"
     - "$HOME/.rustup"
-    - "$HOME/.cache/sccache"
+    - "$CACHE_SCCACHE_DIR"
 before_cache:
   - rm -rf "$HOME/.cargo/registry/src"
   # Travis can't cache files that are not readable by "others"
