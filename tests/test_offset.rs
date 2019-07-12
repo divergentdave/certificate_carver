@@ -1,6 +1,6 @@
 use std::io::Cursor;
 
-use certificate_carver::Carver;
+use certificate_carver::FileCarver;
 
 const MAX_PADDING: usize = 10 * 1024 * 1024;
 const PADDINGS: [usize; 8] = [
@@ -20,11 +20,11 @@ fn test_offset_pem_cert() {
     let mut padded = vec![0; MAX_PADDING];
     padded.extend_from_slice(bytes);
     let padded = padded;
-    let carver = Carver::new(Vec::new());
+    let mut file_carver = FileCarver::new();
     for padding in PADDINGS.iter() {
         let offset: usize = MAX_PADDING - *padding;
         let mut stream = Cursor::new(&padded[offset..]);
-        let certs = carver.carve_file(&mut stream);
+        let certs = file_carver.carve_file(&mut stream);
         assert_eq!(certs.len(), 2, "padding is {}", padding);
     }
 }
@@ -35,11 +35,11 @@ fn test_offset_der_cert() {
     let mut padded = vec![0; MAX_PADDING];
     padded.extend_from_slice(bytes);
     let padded = padded;
-    let carver = Carver::new(Vec::new());
+    let mut file_carver = FileCarver::new();
     for padding in PADDINGS.iter() {
         let offset: usize = MAX_PADDING - *padding;
         let mut stream = Cursor::new(&padded[offset..]);
-        let certs = carver.carve_file(&mut stream);
+        let certs = file_carver.carve_file(&mut stream);
         assert_eq!(certs.len(), 1, "padding is {}", padding);
     }
 }
@@ -52,7 +52,7 @@ fn test_pem_then_der() {
     vec1.extend_from_slice(pem_bytes);
     let vec1 = vec1;
     let zeros = &vec1[..MAX_PADDING];
-    let carver = Carver::new(Vec::new());
+    let mut file_carver = FileCarver::new();
     for padding_infix in PADDINGS.iter() {
         let mut vec2 = vec1.clone();
         vec2.extend_from_slice(&zeros[..*padding_infix]);
@@ -60,7 +60,7 @@ fn test_pem_then_der() {
         for padding_prefix in PADDINGS.iter() {
             let offset: usize = MAX_PADDING - *padding_prefix;
             let mut stream = Cursor::new(&vec2[offset..]);
-            let certs = carver.carve_file(&mut stream);
+            let certs = file_carver.carve_file(&mut stream);
             assert_eq!(
                 certs.len(),
                 3,
@@ -80,7 +80,7 @@ fn test_der_then_pem() {
     vec1.extend_from_slice(der_bytes);
     let vec1 = vec1;
     let zeros = &vec1[..MAX_PADDING];
-    let carver = Carver::new(Vec::new());
+    let mut file_carver = FileCarver::new();
     for padding_infix in PADDINGS.iter() {
         let mut vec2 = vec1.clone();
         vec2.extend_from_slice(&zeros[..*padding_infix]);
@@ -88,7 +88,7 @@ fn test_der_then_pem() {
         for padding_prefix in PADDINGS.iter() {
             let offset: usize = MAX_PADDING - *padding_prefix;
             let mut stream = Cursor::new(&vec2[offset..]);
-            let certs = carver.carve_file(&mut stream);
+            let certs = file_carver.carve_file(&mut stream);
             assert_eq!(
                 certs.len(),
                 3,

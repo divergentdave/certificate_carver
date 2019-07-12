@@ -7,7 +7,7 @@ pub mod x509;
 use copy_in_place::copy_in_place;
 use jwalk::WalkDir;
 use lazy_static::lazy_static;
-use regex::bytes::Regex;
+use regex::bytes::{CaptureLocations, Regex};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::fmt::{Debug, Display, Formatter};
@@ -174,16 +174,14 @@ impl<R: Read> BufReaderOverlap<R> {
     }
 }
 
-pub struct Carver {
-    pub logs: Vec<LogInfo>,
+pub struct CertificatePool {
     pub fp_map: HashMap<CertificateFingerprint, CertificateRecord>,
     pub subject_map: HashMap<NameInfo, HashSet<CertificateFingerprint>>,
 }
 
-impl Carver {
-    pub fn new(logs: Vec<LogInfo>) -> Carver {
-        Carver {
-            logs,
+impl CertificatePool {
+    pub fn new() -> CertificatePool {
+        CertificatePool {
             fp_map: HashMap::new(),
             subject_map: HashMap::new(),
         }
@@ -202,232 +200,6 @@ impl Carver {
                 let entry = self.subject_map.entry(subject);
                 let fp_vec = entry.or_insert_with(HashSet::new);
                 fp_vec.insert(digest);
-            }
-        }
-    }
-
-    pub fn carve_stream<R: Read>(&self, stream: &mut R) -> Vec<CertificateBytes> {
-        lazy_static! {
-            static ref HEADER_RE: Regex = Regex::new(
-                "(?P<DER>(?-u:\\x30\\x82(?P<length>..)\\x30\\x82..(?:\\xa0\\x03\\x02\\x01.)?\\x02))|\
-                (?P<PEM>-----BEGIN CERTIFICATE-----)|\
-                (?P<XMLDSig><(?:[A-Z_a-z][A-Z_a-z-.0-9]*:)?(X509Certificate|EncapsulatedTimeStamp|CertifiedRole|EncapsulatedX509Certificate|EncapsulatedCRLValue|EncapsulatedOCSPValue)[> ])"
-            ).unwrap();
-            static ref PEM_END_RE: Regex = Regex::new("-----END CERTIFICATE-----").unwrap();
-            static ref XMLDSIG_END_RE: Regex = Regex::new(
-                "</(?:[A-Z_a-z][A-Z_a-z-.0-9]*:)?(X509Certificate|EncapsulatedTimeStamp|CertifiedRole|EncapsulatedX509Certificate|EncapsulatedCRLValue|EncapsulatedOCSPValue)>"
-            ).unwrap();
-        }
-
-        let mut results = Vec::new();
-
-        const MAX_CERTIFICATE_SIZE: usize = 16 * 1024;
-        const BUFFER_SIZE: usize = 32 * 1024;
-        const OVERLAP: usize = 27; // enough to capture the PEM header (and the DER prefix)
-        let mut stream = BufReaderOverlap::with_capacity(BUFFER_SIZE, stream);
-        let mut min_size = OVERLAP;
-        loop {
-            let (buf, eof) = match stream.fill_buf(min_size) {
-                Ok((buf, eof)) => (buf, eof),
-                Err(_) => return results,
-            };
-            min_size = OVERLAP;
-            let consume_amount: usize = match HEADER_RE.captures(&buf) {
-                Some(caps) => {
-                    if let Some(m) = caps.name("DER") {
-                        let length_bytes = &caps["length"];
-                        let length = u16::from_be_bytes(length_bytes.try_into().unwrap()) as usize;
-                        let start = m.start();
-                        let end = start + length + 4;
-                        if end <= buf.len() {
-                            results.push(CertificateBytes(buf[start..end].to_vec()));
-                            start + 2
-                        } else {
-                            // The end of this certificate isn't in the buffer yet, try reading
-                            // more if the buffer is too small
-                            if buf.len() - start < MAX_CERTIFICATE_SIZE && !eof {
-                                min_size = MAX_CERTIFICATE_SIZE;
-                                start
-                            } else {
-                                // The DER sequence is too long, this was probably a false
-                                // positive. Discard the first byte of the match, and keep
-                                // searching from there.
-                                1
-                            }
-                        }
-                    } else if let Some(m) = caps.name("PEM") {
-                        let header_start = m.start();
-                        let b64_start = m.end();
-                        match PEM_END_RE.find(&buf[b64_start..]) {
-                            Some(m2) => {
-                                let b64_end = b64_start + m2.start();
-                                let encoded = &buf[b64_start..b64_end];
-                                if let Ok(bytes) = pem_base64_decode(&encoded) {
-                                    results.push(CertificateBytes(bytes));
-                                }
-                                m.end() - 5
-                            }
-                            None => {
-                                // The footer isn't in the buffer yet, try reading more if the
-                                // buffer is too small
-                                if buf.len() - header_start < MAX_CERTIFICATE_SIZE && !eof {
-                                    min_size = MAX_CERTIFICATE_SIZE;
-                                    header_start
-                                } else {
-                                    // Couldn't find a footer, this was probably a false positive.
-                                    // Keep searching from after the header.
-                                    m.end() - 5
-                                }
-                            }
-                        }
-                    } else if let Some(m) = caps.name("XMLDSig") {
-                        let tag_start = m.start();
-                        let temp_start = m.end() - 1;
-                        match buf[temp_start..].iter().position(|&b| b == b'>') {
-                            None => {
-                                // The buffer has the beginning of an opening tag, but not its
-                                // closing angle bracket, try reading more if the buffer is too
-                                // small
-                                if buf.len() - tag_start < MAX_CERTIFICATE_SIZE && !eof {
-                                    min_size = MAX_CERTIFICATE_SIZE;
-                                    tag_start
-                                } else {
-                                    // Couldn't find the end of the opening tag, this was probably
-                                    // a false positive. Skip the opening angle bracket and keep
-                                    // searching.
-                                    1
-                                }
-                            }
-                            Some(bracket_off) => {
-                                let b64_start = temp_start + bracket_off + 1;
-                                match XMLDSIG_END_RE.find(&buf[b64_start..]) {
-                                    Some(m2) => {
-                                        let b64_end = b64_start + m2.start();
-                                        let encoded = &buf[b64_start..b64_end];
-                                        if let Ok(bytes) = pem_base64_decode(&encoded) {
-                                            let mut cursor = Cursor::new(bytes);
-                                            results.append(&mut self.carve_stream(&mut cursor));
-                                        }
-                                        m.end()
-                                    }
-                                    None => {
-                                        // The closing tag isn't in the buffer yet, try reading
-                                        // more if the buffer is too small
-                                        if buf.len() - tag_start < MAX_CERTIFICATE_SIZE && !eof {
-                                            min_size = MAX_CERTIFICATE_SIZE;
-                                            tag_start
-                                        } else {
-                                            // Couldn't find a closing tag, this was probably a
-                                            // false positive. Keep searching from after the
-                                            // opening tag.
-                                            m.end()
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        panic!("Impossible else branch, if this regex matches, one of its three capturing groups must match");
-                    }
-                }
-                None => {
-                    if eof {
-                        return results;
-                    }
-                    if buf.len() > OVERLAP {
-                        buf.len() - OVERLAP
-                    } else {
-                        0
-                    }
-                }
-            };
-            stream.consume(consume_amount);
-        }
-    }
-
-    pub fn carve_file<RS: Read + Seek>(&self, mut file: &mut RS) -> Vec<CertificateBytes> {
-        let mut magic: [u8; 4] = [0; 4];
-        match file.read(&mut magic) {
-            Ok(_) => (),
-            Err(_) => return Vec::new(),
-        }
-        match file.seek(SeekFrom::Start(0)) {
-            Ok(_) => (),
-            Err(_) => return Vec::new(),
-        }
-        if magic == ZIP_MAGIC {
-            let mut results = Vec::new();
-            loop {
-                match read_zipfile_from_stream(&mut file) {
-                    Ok(Some(mut zip_file)) => {
-                        results.append(&mut self.carve_stream(&mut zip_file));
-                    }
-                    Ok(None) => break,
-                    Err(_) => break,
-                }
-            }
-            match file.seek(SeekFrom::Start(0)) {
-                Ok(_) => (),
-                Err(_) => return results,
-            }
-            results.append(&mut self.carve_stream(&mut file));
-            results
-        } else {
-            self.carve_stream(&mut file)
-        }
-    }
-
-    pub fn scan_file_object<RS: Read + Seek>(&mut self, mut file: &mut RS, path: &str) {
-        for certbytes in self.carve_file(&mut file).into_iter() {
-            self.add_cert(certbytes, path);
-        }
-    }
-
-    fn scan_file_path(&mut self, path: &Path) {
-        if let Ok(mut file) = File::open(path) {
-            self.scan_file_object(&mut file, path.to_str().unwrap_or("(unprintable path)"));
-        }
-    }
-
-    #[cfg(not(unix))]
-    fn filter_file_metadata(&self, metadata: &std::fs::Metadata) -> bool {
-        metadata.len() > 0 && !metadata.file_type().is_symlink()
-    }
-
-    #[cfg(unix)]
-    fn filter_file_metadata(&self, metadata: &std::fs::Metadata) -> bool {
-        if metadata.len() == 0 {
-            return false;
-        }
-        let file_type = metadata.file_type();
-        !file_type.is_symlink()
-            && !file_type.is_block_device()
-            && !file_type.is_char_device()
-            && !file_type.is_fifo()
-            && !file_type.is_socket()
-    }
-
-    fn scan_directory(&mut self, path: &Path) {
-        let walkdir = WalkDir::new(path).preload_metadata(true);
-        for entry in walkdir.into_iter().filter_map(Result::ok) {
-            let should_scan = match entry.metadata {
-                Some(Ok(ref metadata)) => self.filter_file_metadata(metadata),
-                _ => false,
-            };
-            if should_scan {
-                self.scan_file_path(&entry.path());
-            }
-        }
-    }
-
-    pub fn scan_directory_or_file(&mut self, path: &Path) {
-        if path.is_dir() {
-            self.scan_directory(path);
-        } else {
-            if let Ok(metadata) = path.symlink_metadata() {
-                if self.filter_file_metadata(&metadata) {
-                    self.scan_file_path(path);
-                }
             }
         }
     }
@@ -500,142 +272,392 @@ impl Carver {
             })
             .collect()
     }
+}
 
-    pub fn run<I>(&mut self, paths: I, crtsh: &CrtShServer, log_comms: &LogServers)
-    where
-        I: Iterator<Item = PathBuf>,
-    {
-        for path in paths {
-            self.scan_directory_or_file(path.as_path());
+lazy_static! {
+    static ref HEADER_RE: Regex = Regex::new(
+        "((?-u:\\x30\\x82(..)\\x30\\x82..(?:\\xa0\\x03\\x02\\x01.)?\\x02))|\
+        (-----BEGIN CERTIFICATE-----)|\
+        (<(?:[A-Z_a-z][A-Z_a-z-.0-9]*:)?(?:X509Certificate|EncapsulatedTimeStamp|CertifiedRole|EncapsulatedX509Certificate|EncapsulatedCRLValue|EncapsulatedOCSPValue)[> ])"
+    ).unwrap();
+    static ref PEM_END_RE: Regex = Regex::new("-----END CERTIFICATE-----").unwrap();
+    static ref XMLDSIG_END_RE: Regex = Regex::new(
+        "</(?:[A-Z_a-z][A-Z_a-z-.0-9]*:)?(?:X509Certificate|EncapsulatedTimeStamp|CertifiedRole|EncapsulatedX509Certificate|EncapsulatedCRLValue|EncapsulatedOCSPValue)>"
+    ).unwrap();
+}
+
+pub struct FileCarver {
+    caps: CaptureLocations,
+}
+
+impl FileCarver {
+    pub fn new() -> FileCarver {
+        FileCarver {
+            caps: HEADER_RE.capture_locations(),
         }
-        let mut all_roots_vec = Vec::new();
-        for log in self.logs.iter_mut() {
-            for root_cert in log.roots.iter() {
-                all_roots_vec.push(root_cert.clone());
+    }
+
+    pub fn carve_stream<R: Read>(&mut self, stream: &mut R) -> Vec<CertificateBytes> {
+        let mut results = Vec::new();
+
+        const MAX_CERTIFICATE_SIZE: usize = 16 * 1024;
+        const BUFFER_SIZE: usize = 32 * 1024;
+        const OVERLAP: usize = 27; // enough to capture the PEM header (and the DER prefix)
+        let mut stream = BufReaderOverlap::with_capacity(BUFFER_SIZE, stream);
+        let mut min_size = OVERLAP;
+        loop {
+            let (buf, eof) = match stream.fill_buf(min_size) {
+                Ok((buf, eof)) => (buf, eof),
+                Err(_) => return results,
+            };
+            min_size = OVERLAP;
+            let consume_amount: usize = match HEADER_RE.captures_read(&mut self.caps, &buf) {
+                Some(_) => {
+                    if let Some((start, _end)) = self.caps.get(1) {
+                        let (length_start, length_end) = self.caps.get(2).unwrap();
+                        let length_bytes = &buf[length_start..length_end];
+                        let length = u16::from_be_bytes(length_bytes.try_into().unwrap()) as usize;
+                        let end = start + length + 4;
+                        if end <= buf.len() {
+                            results.push(CertificateBytes(buf[start..end].to_vec()));
+                            start + 2
+                        } else {
+                            // The end of this certificate isn't in the buffer yet, try reading
+                            // more if the buffer is too small
+                            if buf.len() - start < MAX_CERTIFICATE_SIZE && !eof {
+                                min_size = MAX_CERTIFICATE_SIZE;
+                                start
+                            } else {
+                                // The DER sequence is too long, this was probably a false
+                                // positive. Discard the first byte of the match, and keep
+                                // searching from there.
+                                1
+                            }
+                        }
+                    } else if let Some((header_start, b64_start)) = self.caps.get(3) {
+                        match PEM_END_RE.find(&buf[b64_start..]) {
+                            Some(m2) => {
+                                let b64_end = b64_start + m2.start();
+                                let encoded = &buf[b64_start..b64_end];
+                                if let Ok(bytes) = pem_base64_decode(&encoded) {
+                                    results.push(CertificateBytes(bytes));
+                                }
+                                b64_start - 5
+                            }
+                            None => {
+                                // The footer isn't in the buffer yet, try reading more if the
+                                // buffer is too small
+                                if buf.len() - header_start < MAX_CERTIFICATE_SIZE && !eof {
+                                    min_size = MAX_CERTIFICATE_SIZE;
+                                    header_start
+                                } else {
+                                    // Couldn't find a footer, this was probably a false positive.
+                                    // Keep searching from after the header.
+                                    b64_start - 5
+                                }
+                            }
+                        }
+                    } else if let Some((tag_start, match_end)) = self.caps.get(4) {
+                        let temp_start = match_end - 1;
+                        match buf[temp_start..].iter().position(|&b| b == b'>') {
+                            None => {
+                                // The buffer has the beginning of an opening tag, but not its
+                                // closing angle bracket, try reading more if the buffer is too
+                                // small
+                                if buf.len() - tag_start < MAX_CERTIFICATE_SIZE && !eof {
+                                    min_size = MAX_CERTIFICATE_SIZE;
+                                    tag_start
+                                } else {
+                                    // Couldn't find the end of the opening tag, this was probably
+                                    // a false positive. Skip the opening angle bracket and keep
+                                    // searching.
+                                    1
+                                }
+                            }
+                            Some(bracket_off) => {
+                                let b64_start = temp_start + bracket_off + 1;
+                                match XMLDSIG_END_RE.find(&buf[b64_start..]) {
+                                    Some(m2) => {
+                                        let b64_end = b64_start + m2.start();
+                                        let encoded = &buf[b64_start..b64_end];
+                                        if let Ok(bytes) = pem_base64_decode(&encoded) {
+                                            let mut cursor = Cursor::new(bytes);
+                                            results.append(&mut self.carve_stream(&mut cursor));
+                                        }
+                                        match_end
+                                    }
+                                    None => {
+                                        // The closing tag isn't in the buffer yet, try reading
+                                        // more if the buffer is too small
+                                        if buf.len() - tag_start < MAX_CERTIFICATE_SIZE && !eof {
+                                            min_size = MAX_CERTIFICATE_SIZE;
+                                            tag_start
+                                        } else {
+                                            // Couldn't find a closing tag, this was probably a
+                                            // false positive. Keep searching from after the
+                                            // opening tag.
+                                            match_end
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        panic!("Impossible else branch, if this regex matches, one of its three capturing groups must match");
+                    }
+                }
+                None => {
+                    if eof {
+                        return results;
+                    }
+                    if buf.len() > OVERLAP {
+                        buf.len() - OVERLAP
+                    } else {
+                        0
+                    }
+                }
+            };
+            stream.consume(consume_amount);
+        }
+    }
+
+    pub fn carve_file<RS: Read + Seek>(&mut self, mut file: &mut RS) -> Vec<CertificateBytes> {
+        let mut magic: [u8; 4] = [0; 4];
+        match file.read(&mut magic) {
+            Ok(_) => (),
+            Err(_) => return Vec::new(),
+        }
+        match file.seek(SeekFrom::Start(0)) {
+            Ok(_) => (),
+            Err(_) => return Vec::new(),
+        }
+        if magic == ZIP_MAGIC {
+            let mut results = Vec::new();
+            loop {
+                match read_zipfile_from_stream(&mut file) {
+                    Ok(Some(mut zip_file)) => {
+                        results.append(&mut self.carve_stream(&mut zip_file));
+                    }
+                    Ok(None) => break,
+                    Err(_) => break,
+                }
+            }
+            match file.seek(SeekFrom::Start(0)) {
+                Ok(_) => (),
+                Err(_) => return results,
+            }
+            results.append(&mut self.carve_stream(&mut file));
+            results
+        } else {
+            self.carve_stream(&mut file)
+        }
+    }
+
+    pub fn scan_file_object<RS: Read + Seek>(
+        &mut self,
+        mut file: &mut RS,
+        path: &str,
+        pool: &mut CertificatePool,
+    ) {
+        for certbytes in self.carve_file(&mut file).into_iter() {
+            pool.add_cert(certbytes, path);
+        }
+    }
+
+    fn scan_file_path(&mut self, path: &Path, pool: &mut CertificatePool) {
+        if let Ok(mut file) = File::open(path) {
+            self.scan_file_object(
+                &mut file,
+                path.to_str().unwrap_or("(unprintable path)"),
+                pool,
+            );
+        }
+    }
+
+    #[cfg(not(unix))]
+    fn filter_file_metadata(&self, metadata: &std::fs::Metadata) -> bool {
+        metadata.len() > 0 && !metadata.file_type().is_symlink()
+    }
+
+    #[cfg(unix)]
+    fn filter_file_metadata(&self, metadata: &std::fs::Metadata) -> bool {
+        if metadata.len() == 0 {
+            return false;
+        }
+        let file_type = metadata.file_type();
+        !file_type.is_symlink()
+            && !file_type.is_block_device()
+            && !file_type.is_char_device()
+            && !file_type.is_fifo()
+            && !file_type.is_socket()
+    }
+
+    fn scan_directory(&mut self, path: &Path, pool: &mut CertificatePool) {
+        let walkdir = WalkDir::new(path).preload_metadata(true);
+        for entry in walkdir.into_iter().filter_map(Result::ok) {
+            let should_scan = match entry.metadata {
+                Some(Ok(ref metadata)) => self.filter_file_metadata(metadata),
+                _ => false,
+            };
+            if should_scan {
+                self.scan_file_path(&entry.path(), pool);
             }
         }
-        for root_cert in all_roots_vec.iter() {
-            self.add_cert(root_cert.get_bytes().clone(), "log roots");
-        }
-        let mut all_roots = TrustRoots::new();
-        all_roots.add_roots(&all_roots_vec[..]);
+    }
 
-        let mut total_found = 0;
-        let mut total_not_found = 0;
-        let mut count_no_chain = 0;
-        let mut new_certs: Vec<&Certificate> = Vec::new();
-        for (fp, info) in self.fp_map.iter() {
-            if all_roots.test_fingerprint(fp) {
+    pub fn scan_directory_or_file(&mut self, path: &Path, pool: &mut CertificatePool) {
+        if path.is_dir() {
+            self.scan_directory(path, pool);
+        } else {
+            if let Ok(metadata) = path.symlink_metadata() {
+                if self.filter_file_metadata(&metadata) {
+                    self.scan_file_path(path, pool);
+                }
+            }
+        }
+    }
+}
+
+pub fn run<I>(
+    pool: &mut CertificatePool,
+    mut logs: Vec<LogInfo>,
+    paths: I,
+    crtsh: &CrtShServer,
+    log_comms: &LogServers,
+) where
+    I: Iterator<Item = PathBuf>,
+{
+    let mut file_carver = FileCarver::new();
+    for path in paths {
+        file_carver.scan_directory_or_file(path.as_path(), pool);
+    }
+    let mut all_roots_vec = Vec::new();
+    for log in logs.iter_mut() {
+        for root_cert in log.roots.iter() {
+            all_roots_vec.push(root_cert.clone());
+        }
+    }
+    for root_cert in all_roots_vec.iter() {
+        pool.add_cert(root_cert.get_bytes().clone(), "log roots");
+    }
+    let mut all_roots = TrustRoots::new();
+    all_roots.add_roots(&all_roots_vec[..]);
+
+    let mut total_found = 0;
+    let mut total_not_found = 0;
+    let mut count_no_chain = 0;
+    let mut new_certs: Vec<&Certificate> = Vec::new();
+    for (fp, info) in pool.fp_map.iter() {
+        if all_roots.test_fingerprint(fp) {
+            // skip root CAs
+            continue;
+        }
+        info.cert.format_issuer_subject(&mut stdout()).unwrap();
+        println!();
+        if !pool.build_chains(&info.cert, &all_roots).is_empty() {
+            let found = crtsh.check_crtsh(fp).unwrap();
+            if found {
+                total_found += 1;
+            } else {
+                total_not_found += 1;
+                new_certs.push(&info.cert);
+            }
+
+            println!(
+                "{}, crtsh seen = {}, {} file paths",
+                fp,
+                found,
+                info.paths.len()
+            );
+        } else {
+            count_no_chain += 1;
+
+            println!("{}, doesn't chain, {} file paths", fp, info.paths.len());
+        }
+        let path_limit = 10;
+        for path in info.paths.iter().take(path_limit) {
+            println!("{}", path);
+        }
+        if info.paths.len() > path_limit {
+            println!("...");
+        }
+        println!();
+    }
+    let total = total_found + total_not_found;
+    println!(
+        "{}/{} in crt.sh already, {}/{} not yet in crt.sh ({} did not chain to roots)",
+        total_found, total, total_not_found, total, count_no_chain
+    );
+    println!();
+
+    let mut new_submission_count = 0;
+    let new_certs_len = new_certs.len();
+    for cert in new_certs.into_iter() {
+        let mut any_chain = false;
+        let mut any_submission_success = false;
+        let mut all_submission_errors = true;
+        let mut last_submission_error: Option<APIError> = None;
+        for log in logs.iter() {
+            if log.trust_roots.test_fingerprint(&cert.fingerprint()) {
                 // skip root CAs
                 continue;
             }
-            info.cert.format_issuer_subject(&mut stdout()).unwrap();
-            println!();
-            if !self.build_chains(&info.cert, &all_roots).is_empty() {
-                let found = crtsh.check_crtsh(fp).unwrap();
-                if found {
-                    total_found += 1;
-                } else {
-                    total_not_found += 1;
-                    new_certs.push(&info.cert);
-                }
-
-                println!(
-                    "{}, crtsh seen = {}, {} file paths",
-                    fp,
-                    found,
-                    info.paths.len()
-                );
-            } else {
-                count_no_chain += 1;
-
-                println!("{}, doesn't chain, {} file paths", fp, info.paths.len());
+            if !log.will_accept_year(cert.get_not_after_year()) {
+                continue;
             }
-            let path_limit = 10;
-            for path in info.paths.iter().take(path_limit) {
-                println!("{}", path);
-            }
-            if info.paths.len() > path_limit {
-                println!("...");
-            }
-            println!();
-        }
-        let total = total_found + total_not_found;
-        println!(
-            "{}/{} in crt.sh already, {}/{} not yet in crt.sh ({} did not chain to roots)",
-            total_found, total, total_not_found, total, count_no_chain
-        );
-        println!();
-
-        let mut new_submission_count = 0;
-        let new_certs_len = new_certs.len();
-        for cert in new_certs.into_iter() {
-            let mut any_chain = false;
-            let mut any_submission_success = false;
-            let mut all_submission_errors = true;
-            let mut last_submission_error: Option<APIError> = None;
-            for log in self.logs.iter() {
-                if log.trust_roots.test_fingerprint(&cert.fingerprint()) {
-                    // skip root CAs
-                    continue;
-                }
-                if !log.will_accept_year(cert.get_not_after_year()) {
-                    continue;
-                }
-                let chains = self.build_chains(cert, &log.trust_roots);
-                for chain in chains.into_iter() {
-                    any_chain = true;
-                    match log_comms.submit_chain(&log, &chain) {
-                        Ok(_) => {
-                            if !any_submission_success {
-                                new_submission_count += 1;
-                            }
-                            any_submission_success = true;
-                            all_submission_errors = false;
-
-                            print!("submitted to {}: {}, ", log.get_url(), cert.fingerprint());
-                            cert.format_issuer_subject(&mut stdout()).unwrap();
-                            println!();
-                            println!();
-                            // only submit one chain
-                            break;
+            let chains = pool.build_chains(cert, &log.trust_roots);
+            for chain in chains.into_iter() {
+                any_chain = true;
+                match log_comms.submit_chain(&log, &chain) {
+                    Ok(_) => {
+                        if !any_submission_success {
+                            new_submission_count += 1;
                         }
-                        Err(APIError::Status(status)) => {
-                            all_submission_errors = false; // don't want to panic on this
+                        any_submission_success = true;
+                        all_submission_errors = false;
 
-                            print!(
-                                "submission was rejected by {} with reason {}: {}, ",
-                                log.get_url(),
-                                status,
-                                cert.fingerprint()
-                            );
-                            cert.format_issuer_subject(&mut stdout()).unwrap();
-                            println!();
-                            println!();
-                        }
-                        Err(e) => {
-                            println!("submission error: {} {:?}", e, e);
-                            last_submission_error = Some(e);
-                        }
+                        print!("submitted to {}: {}, ", log.get_url(), cert.fingerprint());
+                        cert.format_issuer_subject(&mut stdout()).unwrap();
+                        println!();
+                        println!();
+                        // only submit one chain
+                        break;
+                    }
+                    Err(APIError::Status(status)) => {
+                        all_submission_errors = false; // don't want to panic on this
+
+                        print!(
+                            "submission was rejected by {} with reason {}: {}, ",
+                            log.get_url(),
+                            status,
+                            cert.fingerprint()
+                        );
+                        cert.format_issuer_subject(&mut stdout()).unwrap();
+                        println!();
+                        println!();
+                    }
+                    Err(e) => {
+                        println!("submission error: {} {:?}", e, e);
+                        last_submission_error = Some(e);
                     }
                 }
             }
-            if any_chain && all_submission_errors {
-                let error = last_submission_error.unwrap();
-                let error_desc = error.to_string();
-                panic!(error_desc);
-            }
         }
-        println!(
-            "Successfully submitted {}/{} new certificates",
-            new_submission_count, new_certs_len
-        );
+        if any_chain && all_submission_errors {
+            let error = last_submission_error.unwrap();
+            let error_desc = error.to_string();
+            panic!(error_desc);
+        }
     }
+    println!(
+        "Successfully submitted {}/{} new certificates",
+        new_submission_count, new_certs_len
+    );
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Carver;
+    use super::FileCarver;
     use std::io::Cursor;
 
     #[test]
@@ -645,8 +667,8 @@ mod tests {
         ];
 
         let mut stream = Cursor::new(&BYTES);
-        let carver = Carver::new(Vec::new());
-        let certs = carver.carve_stream(&mut stream);
+        let mut file_carver = FileCarver::new();
+        let certs = file_carver.carve_stream(&mut stream);
         assert!(certs.is_empty());
     }
 
@@ -655,8 +677,8 @@ mod tests {
         const BYTES: &[u8] = b"-----BEGIN CERTIFICATE-----\nMIIC";
 
         let mut stream = Cursor::new(&BYTES);
-        let carver = Carver::new(Vec::new());
-        let certs = carver.carve_stream(&mut stream);
+        let mut file_carver = FileCarver::new();
+        let certs = file_carver.carve_stream(&mut stream);
         assert!(certs.is_empty());
     }
 

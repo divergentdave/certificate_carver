@@ -9,7 +9,7 @@ use certificate_carver::crtsh::{
     CachedCrtShServer, CrtShServer, RealCrtShServer, RetryDelayCrtShServer,
 };
 use certificate_carver::ctlog::{LogInfo, LogShard, RealLogServers};
-use certificate_carver::Carver;
+use certificate_carver::{run, CertificatePool};
 
 const PILOT_DAEDALUS_ROOTS: &str = include_str!("../roots/pilot-daedalus.json");
 const ICARUS_ROOTS: &str = include_str!("../roots/icarus.json");
@@ -254,6 +254,6 @@ fn main() {
     let log_comms = RealLogServers::new(&client);
 
     let logs = make_log_list();
-    let mut carver = Carver::new(logs);
-    carver.run(paths, crtsh.as_ref(), &log_comms);
+    let mut pool = CertificatePool::new();
+    run(&mut pool, logs, paths, crtsh.as_ref(), &log_comms);
 }
