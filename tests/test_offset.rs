@@ -20,7 +20,7 @@ fn test_offset_pem_cert() {
     let mut padded = vec![0; MAX_PADDING];
     padded.extend_from_slice(bytes);
     let padded = padded;
-    let file_carver = FileCarver::new();
+    let mut file_carver = FileCarver::new();
     for padding in PADDINGS.iter() {
         let offset: usize = MAX_PADDING - *padding;
         let mut stream = Cursor::new(&padded[offset..]);
@@ -35,7 +35,7 @@ fn test_offset_der_cert() {
     let mut padded = vec![0; MAX_PADDING];
     padded.extend_from_slice(bytes);
     let padded = padded;
-    let file_carver = FileCarver::new();
+    let mut file_carver = FileCarver::new();
     for padding in PADDINGS.iter() {
         let offset: usize = MAX_PADDING - *padding;
         let mut stream = Cursor::new(&padded[offset..]);
@@ -52,7 +52,7 @@ fn test_pem_then_der() {
     vec1.extend_from_slice(pem_bytes);
     let vec1 = vec1;
     let zeros = &vec1[..MAX_PADDING];
-    let file_carver = FileCarver::new();
+    let mut file_carver = FileCarver::new();
     for padding_infix in PADDINGS.iter() {
         let mut vec2 = vec1.clone();
         vec2.extend_from_slice(&zeros[..*padding_infix]);
@@ -80,7 +80,7 @@ fn test_der_then_pem() {
     vec1.extend_from_slice(der_bytes);
     let vec1 = vec1;
     let zeros = &vec1[..MAX_PADDING];
-    let file_carver = FileCarver::new();
+    let mut file_carver = FileCarver::new();
     for padding_infix in PADDINGS.iter() {
         let mut vec2 = vec1.clone();
         vec2.extend_from_slice(&zeros[..*padding_infix]);

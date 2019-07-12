@@ -7,7 +7,7 @@ use certificate_carver::{CertificatePool, FileCarver};
 fn test_load_pem_chain() {
     let bytes = include_bytes!("files/davidsherenowitsa.party/fullchain.pem");
     let mut stream = Cursor::new(&bytes[..]);
-    let file_carver = FileCarver::new();
+    let mut file_carver = FileCarver::new();
     let certs = file_carver.carve_file(&mut stream);
     assert_eq!(certs.len(), 2);
 }
@@ -16,7 +16,7 @@ fn test_load_pem_chain() {
 fn test_load_zip_chain() {
     let bytes = include_bytes!("files/davidsherenowitsa.party/fullchain.zip");
     let mut stream = Cursor::new(&bytes[..]);
-    let file_carver = FileCarver::new();
+    let mut file_carver = FileCarver::new();
     let certs = file_carver.carve_file(&mut stream);
     assert_eq!(certs.len(), 2);
 }
@@ -25,7 +25,7 @@ fn test_load_zip_chain() {
 fn test_load_der_cert() {
     let bytes = include_bytes!("files/davidsherenowitsa.party/cert.der");
     let mut stream = Cursor::new(&bytes[..]);
-    let file_carver = FileCarver::new();
+    let mut file_carver = FileCarver::new();
     let certs = file_carver.carve_file(&mut stream);
     assert_eq!(certs.len(), 1);
 }
@@ -36,7 +36,7 @@ fn test_overlapping_pem_header() {
     bytes.extend_from_slice(b"-----BEGIN CERTIFICATE");
     bytes.extend_from_slice(include_bytes!("files/bespoke/rootca.crt"));
     let mut stream = Cursor::new(bytes);
-    let file_carver = FileCarver::new();
+    let mut file_carver = FileCarver::new();
     let mut certs = file_carver.carve_file(&mut stream);
     assert_eq!(certs.len(), 1);
     let cert = certs.pop().unwrap();
@@ -49,7 +49,7 @@ fn test_overlapping_pem_header() {
 fn test_xmldsig() {
     let bytes = include_bytes!("files/collected/OJ_L_2014_189_FULL.xml");
     let mut stream = Cursor::new(&bytes[..]);
-    let file_carver = FileCarver::new();
+    let mut file_carver = FileCarver::new();
     let mut pool = CertificatePool::new();
     let certs = file_carver.carve_file(&mut stream);
     assert_eq!(certs.len(), 9);

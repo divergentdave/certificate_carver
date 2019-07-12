@@ -7,7 +7,7 @@ pub mod x509;
 use copy_in_place::copy_in_place;
 use jwalk::WalkDir;
 use lazy_static::lazy_static;
-use regex::bytes::Regex;
+use regex::bytes::{CaptureLocations, Regex};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::fmt::{Debug, Display, Formatter};
@@ -274,26 +274,30 @@ impl CertificatePool {
     }
 }
 
-pub struct FileCarver {}
+lazy_static! {
+    static ref HEADER_RE: Regex = Regex::new(
+        "((?-u:\\x30\\x82(..)\\x30\\x82..(?:\\xa0\\x03\\x02\\x01.)?\\x02))|\
+        (-----BEGIN CERTIFICATE-----)|\
+        (<(?:[A-Z_a-z][A-Z_a-z-.0-9]*:)?(?:X509Certificate|EncapsulatedTimeStamp|CertifiedRole|EncapsulatedX509Certificate|EncapsulatedCRLValue|EncapsulatedOCSPValue)[> ])"
+    ).unwrap();
+    static ref PEM_END_RE: Regex = Regex::new("-----END CERTIFICATE-----").unwrap();
+    static ref XMLDSIG_END_RE: Regex = Regex::new(
+        "</(?:[A-Z_a-z][A-Z_a-z-.0-9]*:)?(?:X509Certificate|EncapsulatedTimeStamp|CertifiedRole|EncapsulatedX509Certificate|EncapsulatedCRLValue|EncapsulatedOCSPValue)>"
+    ).unwrap();
+}
+
+pub struct FileCarver {
+    caps: CaptureLocations,
+}
 
 impl FileCarver {
     pub fn new() -> FileCarver {
-        FileCarver {}
+        FileCarver {
+            caps: HEADER_RE.capture_locations(),
+        }
     }
 
-    pub fn carve_stream<R: Read>(&self, stream: &mut R) -> Vec<CertificateBytes> {
-        lazy_static! {
-            static ref HEADER_RE: Regex = Regex::new(
-                "(?P<DER>(?-u:\\x30\\x82(?P<length>..)\\x30\\x82..(?:\\xa0\\x03\\x02\\x01.)?\\x02))|\
-                (?P<PEM>-----BEGIN CERTIFICATE-----)|\
-                (?P<XMLDSig><(?:[A-Z_a-z][A-Z_a-z-.0-9]*:)?(X509Certificate|EncapsulatedTimeStamp|CertifiedRole|EncapsulatedX509Certificate|EncapsulatedCRLValue|EncapsulatedOCSPValue)[> ])"
-            ).unwrap();
-            static ref PEM_END_RE: Regex = Regex::new("-----END CERTIFICATE-----").unwrap();
-            static ref XMLDSIG_END_RE: Regex = Regex::new(
-                "</(?:[A-Z_a-z][A-Z_a-z-.0-9]*:)?(X509Certificate|EncapsulatedTimeStamp|CertifiedRole|EncapsulatedX509Certificate|EncapsulatedCRLValue|EncapsulatedOCSPValue)>"
-            ).unwrap();
-        }
-
+    pub fn carve_stream<R: Read>(&mut self, stream: &mut R) -> Vec<CertificateBytes> {
         let mut results = Vec::new();
 
         const MAX_CERTIFICATE_SIZE: usize = 16 * 1024;
@@ -307,12 +311,12 @@ impl FileCarver {
                 Err(_) => return results,
             };
             min_size = OVERLAP;
-            let consume_amount: usize = match HEADER_RE.captures(&buf) {
-                Some(caps) => {
-                    if let Some(m) = caps.name("DER") {
-                        let length_bytes = &caps["length"];
+            let consume_amount: usize = match HEADER_RE.captures_read(&mut self.caps, &buf) {
+                Some(_) => {
+                    if let Some((start, _end)) = self.caps.get(1) {
+                        let (length_start, length_end) = self.caps.get(2).unwrap();
+                        let length_bytes = &buf[length_start..length_end];
                         let length = u16::from_be_bytes(length_bytes.try_into().unwrap()) as usize;
-                        let start = m.start();
                         let end = start + length + 4;
                         if end <= buf.len() {
                             results.push(CertificateBytes(buf[start..end].to_vec()));
@@ -330,9 +334,7 @@ impl FileCarver {
                                 1
                             }
                         }
-                    } else if let Some(m) = caps.name("PEM") {
-                        let header_start = m.start();
-                        let b64_start = m.end();
+                    } else if let Some((header_start, b64_start)) = self.caps.get(3) {
                         match PEM_END_RE.find(&buf[b64_start..]) {
                             Some(m2) => {
                                 let b64_end = b64_start + m2.start();
@@ -340,7 +342,7 @@ impl FileCarver {
                                 if let Ok(bytes) = pem_base64_decode(&encoded) {
                                     results.push(CertificateBytes(bytes));
                                 }
-                                m.end() - 5
+                                b64_start - 5
                             }
                             None => {
                                 // The footer isn't in the buffer yet, try reading more if the
@@ -351,13 +353,12 @@ impl FileCarver {
                                 } else {
                                     // Couldn't find a footer, this was probably a false positive.
                                     // Keep searching from after the header.
-                                    m.end() - 5
+                                    b64_start - 5
                                 }
                             }
                         }
-                    } else if let Some(m) = caps.name("XMLDSig") {
-                        let tag_start = m.start();
-                        let temp_start = m.end() - 1;
+                    } else if let Some((tag_start, match_end)) = self.caps.get(4) {
+                        let temp_start = match_end - 1;
                         match buf[temp_start..].iter().position(|&b| b == b'>') {
                             None => {
                                 // The buffer has the beginning of an opening tag, but not its
@@ -383,7 +384,7 @@ impl FileCarver {
                                             let mut cursor = Cursor::new(bytes);
                                             results.append(&mut self.carve_stream(&mut cursor));
                                         }
-                                        m.end()
+                                        match_end
                                     }
                                     None => {
                                         // The closing tag isn't in the buffer yet, try reading
@@ -395,7 +396,7 @@ impl FileCarver {
                                             // Couldn't find a closing tag, this was probably a
                                             // false positive. Keep searching from after the
                                             // opening tag.
-                                            m.end()
+                                            match_end
                                         }
                                     }
                                 }
@@ -420,7 +421,7 @@ impl FileCarver {
         }
     }
 
-    pub fn carve_file<RS: Read + Seek>(&self, mut file: &mut RS) -> Vec<CertificateBytes> {
+    pub fn carve_file<RS: Read + Seek>(&mut self, mut file: &mut RS) -> Vec<CertificateBytes> {
         let mut magic: [u8; 4] = [0; 4];
         match file.read(&mut magic) {
             Ok(_) => (),
@@ -453,7 +454,7 @@ impl FileCarver {
     }
 
     pub fn scan_file_object<RS: Read + Seek>(
-        &self,
+        &mut self,
         mut file: &mut RS,
         path: &str,
         pool: &mut CertificatePool,
@@ -463,7 +464,7 @@ impl FileCarver {
         }
     }
 
-    fn scan_file_path(&self, path: &Path, pool: &mut CertificatePool) {
+    fn scan_file_path(&mut self, path: &Path, pool: &mut CertificatePool) {
         if let Ok(mut file) = File::open(path) {
             self.scan_file_object(
                 &mut file,
@@ -491,7 +492,7 @@ impl FileCarver {
             && !file_type.is_socket()
     }
 
-    fn scan_directory(&self, path: &Path, pool: &mut CertificatePool) {
+    fn scan_directory(&mut self, path: &Path, pool: &mut CertificatePool) {
         let walkdir = WalkDir::new(path).preload_metadata(true);
         for entry in walkdir.into_iter().filter_map(Result::ok) {
             let should_scan = match entry.metadata {
@@ -504,7 +505,7 @@ impl FileCarver {
         }
     }
 
-    pub fn scan_directory_or_file(&self, path: &Path, pool: &mut CertificatePool) {
+    pub fn scan_directory_or_file(&mut self, path: &Path, pool: &mut CertificatePool) {
         if path.is_dir() {
             self.scan_directory(path, pool);
         } else {
@@ -526,7 +527,7 @@ pub fn run<I>(
 ) where
     I: Iterator<Item = PathBuf>,
 {
-    let file_carver = FileCarver::new();
+    let mut file_carver = FileCarver::new();
     for path in paths {
         file_carver.scan_directory_or_file(path.as_path(), pool);
     }
@@ -666,7 +667,7 @@ mod tests {
         ];
 
         let mut stream = Cursor::new(&BYTES);
-        let file_carver = FileCarver::new();
+        let mut file_carver = FileCarver::new();
         let certs = file_carver.carve_stream(&mut stream);
         assert!(certs.is_empty());
     }
@@ -676,7 +677,7 @@ mod tests {
         const BYTES: &[u8] = b"-----BEGIN CERTIFICATE-----\nMIIC";
 
         let mut stream = Cursor::new(&BYTES);
-        let file_carver = FileCarver::new();
+        let mut file_carver = FileCarver::new();
         let certs = file_carver.carve_stream(&mut stream);
         assert!(certs.is_empty());
     }

@@ -24,7 +24,7 @@ fn test_fixture_bespoke_certs() {
 
 #[test]
 fn test_cross_signatures() {
-    let file_carver = FileCarver::new();
+    let mut file_carver = FileCarver::new();
     let mut pool = CertificatePool::new();
     let root_pem = include_bytes!("files/bespoke/rootca.crt");
     let cert1_pem = include_bytes!("files/bespoke/intermediate_a_signed_by_rootca.crt");
