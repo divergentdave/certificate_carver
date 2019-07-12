@@ -1,14 +1,14 @@
 use std::io::Cursor;
 
 use certificate_carver::x509::Certificate;
-use certificate_carver::Carver;
+use certificate_carver::{CertificatePool, FileCarver};
 
 #[test]
 fn test_load_pem_chain() {
     let bytes = include_bytes!("files/davidsherenowitsa.party/fullchain.pem");
     let mut stream = Cursor::new(&bytes[..]);
-    let carver = Carver::new(Vec::new());
-    let certs = carver.carve_file(&mut stream);
+    let file_carver = FileCarver::new();
+    let certs = file_carver.carve_file(&mut stream);
     assert_eq!(certs.len(), 2);
 }
 
@@ -16,8 +16,8 @@ fn test_load_pem_chain() {
 fn test_load_zip_chain() {
     let bytes = include_bytes!("files/davidsherenowitsa.party/fullchain.zip");
     let mut stream = Cursor::new(&bytes[..]);
-    let carver = Carver::new(Vec::new());
-    let certs = carver.carve_file(&mut stream);
+    let file_carver = FileCarver::new();
+    let certs = file_carver.carve_file(&mut stream);
     assert_eq!(certs.len(), 2);
 }
 
@@ -25,8 +25,8 @@ fn test_load_zip_chain() {
 fn test_load_der_cert() {
     let bytes = include_bytes!("files/davidsherenowitsa.party/cert.der");
     let mut stream = Cursor::new(&bytes[..]);
-    let carver = Carver::new(Vec::new());
-    let certs = carver.carve_file(&mut stream);
+    let file_carver = FileCarver::new();
+    let certs = file_carver.carve_file(&mut stream);
     assert_eq!(certs.len(), 1);
 }
 
@@ -36,8 +36,8 @@ fn test_overlapping_pem_header() {
     bytes.extend_from_slice(b"-----BEGIN CERTIFICATE");
     bytes.extend_from_slice(include_bytes!("files/bespoke/rootca.crt"));
     let mut stream = Cursor::new(bytes);
-    let carver = Carver::new(Vec::new());
-    let mut certs = carver.carve_file(&mut stream);
+    let file_carver = FileCarver::new();
+    let mut certs = file_carver.carve_file(&mut stream);
     assert_eq!(certs.len(), 1);
     let cert = certs.pop().unwrap();
     let cert = Certificate::parse(cert).unwrap();
@@ -49,8 +49,9 @@ fn test_overlapping_pem_header() {
 fn test_xmldsig() {
     let bytes = include_bytes!("files/collected/OJ_L_2014_189_FULL.xml");
     let mut stream = Cursor::new(&bytes[..]);
-    let mut carver = Carver::new(Vec::new());
-    let certs = carver.carve_file(&mut stream);
+    let file_carver = FileCarver::new();
+    let mut pool = CertificatePool::new();
+    let certs = file_carver.carve_file(&mut stream);
     assert_eq!(certs.len(), 9);
     let root_fp = b"\xa1\xb2\xdb\xeb\x64\xe7\x06\xc6\x16\x9e\x3c\x41\x18\xb2\x3b\xaa\x09\x01\x8a\x84\x27\x66\x6d\x8b\xf0\xe2\x88\x91\xec\x05\x19\x50";
     assert!(certs.iter().any(|cert| Certificate::parse(cert.clone())
@@ -59,8 +60,8 @@ fn test_xmldsig() {
         .as_ref()
         == root_fp));
     for cert in certs.into_iter() {
-        carver.add_cert(cert, "files/collected/OJ_L_2014_189_FULL.xml");
+        pool.add_cert(cert, "files/collected/OJ_L_2014_189_FULL.xml");
     }
-    assert!(carver.fp_map.iter().any(|(fp, _)| fp.as_ref() == root_fp));
-    assert_eq!(carver.fp_map.len(), 2);
+    assert!(pool.fp_map.iter().any(|(fp, _)| fp.as_ref() == root_fp));
+    assert_eq!(pool.fp_map.len(), 2);
 }

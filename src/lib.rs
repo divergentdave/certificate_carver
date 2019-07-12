@@ -174,16 +174,14 @@ impl<R: Read> BufReaderOverlap<R> {
     }
 }
 
-pub struct Carver {
-    pub logs: Vec<LogInfo>,
+pub struct CertificatePool {
     pub fp_map: HashMap<CertificateFingerprint, CertificateRecord>,
     pub subject_map: HashMap<NameInfo, HashSet<CertificateFingerprint>>,
 }
 
-impl Carver {
-    pub fn new(logs: Vec<LogInfo>) -> Carver {
-        Carver {
-            logs,
+impl CertificatePool {
+    pub fn new() -> CertificatePool {
+        CertificatePool {
             fp_map: HashMap::new(),
             subject_map: HashMap::new(),
         }
@@ -204,6 +202,83 @@ impl Carver {
                 fp_vec.insert(digest);
             }
         }
+    }
+
+    pub fn build_chains(
+        &self,
+        leaf: &Certificate,
+        trust_roots: &TrustRoots,
+    ) -> Vec<CertificateChain> {
+        fn recurse<'a>(
+            cert: &'a Certificate,
+            history: &[CertificateFingerprint],
+            fp_map: &'a HashMap<CertificateFingerprint, CertificateRecord>,
+            subject_map: &'a HashMap<NameInfo, HashSet<CertificateFingerprint>>,
+            trust_roots: &TrustRoots,
+        ) -> Vec<Vec<CertificateFingerprint>> {
+            if let Some(issuer_fps) = subject_map.get(cert.get_issuer()) {
+                let mut partial_chains: Vec<Vec<CertificateFingerprint>> = Vec::new();
+                for issuer_fp in issuer_fps.iter() {
+                    let mut in_history = false;
+                    for history_fp in history.iter() {
+                        if issuer_fp == history_fp {
+                            in_history = true;
+                            break;
+                        }
+                    }
+                    if in_history {
+                        continue;
+                    }
+
+                    let issuer_cert = &fp_map[issuer_fp].cert;
+                    if issuer_cert.get_subject() == cert.get_subject() {
+                        // Don't follow self-signed certificates with the same name as this one
+                        continue;
+                    }
+
+                    let mut new = history.to_owned();
+                    new.push(cert.fingerprint());
+                    if trust_roots.test_fingerprint(&issuer_fp) {
+                        partial_chains.push(new);
+                        // only want this chain once, even if we have multiple equivalent roots
+                        break;
+                    } else {
+                        let mut result =
+                            recurse(issuer_cert, &new, fp_map, subject_map, trust_roots);
+                        partial_chains.append(&mut result);
+                    }
+                }
+                partial_chains
+            } else {
+                Vec::new()
+            }
+        }
+        let fp_chains = recurse(
+            leaf,
+            &Vec::new(),
+            &self.fp_map,
+            &self.subject_map,
+            trust_roots,
+        );
+        fp_chains
+            .into_iter()
+            .map(|fp_chain| {
+                CertificateChain(
+                    fp_chain
+                        .into_iter()
+                        .map(|fp| self.fp_map[&fp].cert.get_bytes().clone())
+                        .collect(),
+                )
+            })
+            .collect()
+    }
+}
+
+pub struct FileCarver {}
+
+impl FileCarver {
+    pub fn new() -> FileCarver {
+        FileCarver {}
     }
 
     pub fn carve_stream<R: Read>(&self, stream: &mut R) -> Vec<CertificateBytes> {
@@ -377,15 +452,24 @@ impl Carver {
         }
     }
 
-    pub fn scan_file_object<RS: Read + Seek>(&mut self, mut file: &mut RS, path: &str) {
+    pub fn scan_file_object<RS: Read + Seek>(
+        &self,
+        mut file: &mut RS,
+        path: &str,
+        pool: &mut CertificatePool,
+    ) {
         for certbytes in self.carve_file(&mut file).into_iter() {
-            self.add_cert(certbytes, path);
+            pool.add_cert(certbytes, path);
         }
     }
 
-    fn scan_file_path(&mut self, path: &Path) {
+    fn scan_file_path(&self, path: &Path, pool: &mut CertificatePool) {
         if let Ok(mut file) = File::open(path) {
-            self.scan_file_object(&mut file, path.to_str().unwrap_or("(unprintable path)"));
+            self.scan_file_object(
+                &mut file,
+                path.to_str().unwrap_or("(unprintable path)"),
+                pool,
+            );
         }
     }
 
@@ -407,7 +491,7 @@ impl Carver {
             && !file_type.is_socket()
     }
 
-    fn scan_directory(&mut self, path: &Path) {
+    fn scan_directory(&self, path: &Path, pool: &mut CertificatePool) {
         let walkdir = WalkDir::new(path).preload_metadata(true);
         for entry in walkdir.into_iter().filter_map(Result::ok) {
             let should_scan = match entry.metadata {
@@ -415,227 +499,164 @@ impl Carver {
                 _ => false,
             };
             if should_scan {
-                self.scan_file_path(&entry.path());
+                self.scan_file_path(&entry.path(), pool);
             }
         }
     }
 
-    pub fn scan_directory_or_file(&mut self, path: &Path) {
+    pub fn scan_directory_or_file(&self, path: &Path, pool: &mut CertificatePool) {
         if path.is_dir() {
-            self.scan_directory(path);
+            self.scan_directory(path, pool);
         } else {
             if let Ok(metadata) = path.symlink_metadata() {
                 if self.filter_file_metadata(&metadata) {
-                    self.scan_file_path(path);
+                    self.scan_file_path(path, pool);
                 }
             }
         }
     }
+}
 
-    pub fn build_chains(
-        &self,
-        leaf: &Certificate,
-        trust_roots: &TrustRoots,
-    ) -> Vec<CertificateChain> {
-        fn recurse<'a>(
-            cert: &'a Certificate,
-            history: &[CertificateFingerprint],
-            fp_map: &'a HashMap<CertificateFingerprint, CertificateRecord>,
-            subject_map: &'a HashMap<NameInfo, HashSet<CertificateFingerprint>>,
-            trust_roots: &TrustRoots,
-        ) -> Vec<Vec<CertificateFingerprint>> {
-            if let Some(issuer_fps) = subject_map.get(cert.get_issuer()) {
-                let mut partial_chains: Vec<Vec<CertificateFingerprint>> = Vec::new();
-                for issuer_fp in issuer_fps.iter() {
-                    let mut in_history = false;
-                    for history_fp in history.iter() {
-                        if issuer_fp == history_fp {
-                            in_history = true;
-                            break;
-                        }
-                    }
-                    if in_history {
-                        continue;
-                    }
+pub fn run<I>(
+    pool: &mut CertificatePool,
+    mut logs: Vec<LogInfo>,
+    paths: I,
+    crtsh: &CrtShServer,
+    log_comms: &LogServers,
+) where
+    I: Iterator<Item = PathBuf>,
+{
+    let file_carver = FileCarver::new();
+    for path in paths {
+        file_carver.scan_directory_or_file(path.as_path(), pool);
+    }
+    let mut all_roots_vec = Vec::new();
+    for log in logs.iter_mut() {
+        for root_cert in log.roots.iter() {
+            all_roots_vec.push(root_cert.clone());
+        }
+    }
+    for root_cert in all_roots_vec.iter() {
+        pool.add_cert(root_cert.get_bytes().clone(), "log roots");
+    }
+    let mut all_roots = TrustRoots::new();
+    all_roots.add_roots(&all_roots_vec[..]);
 
-                    let issuer_cert = &fp_map[issuer_fp].cert;
-                    if issuer_cert.get_subject() == cert.get_subject() {
-                        // Don't follow self-signed certificates with the same name as this one
-                        continue;
-                    }
-
-                    let mut new = history.to_owned();
-                    new.push(cert.fingerprint());
-                    if trust_roots.test_fingerprint(&issuer_fp) {
-                        partial_chains.push(new);
-                        // only want this chain once, even if we have multiple equivalent roots
-                        break;
-                    } else {
-                        let mut result =
-                            recurse(issuer_cert, &new, fp_map, subject_map, trust_roots);
-                        partial_chains.append(&mut result);
-                    }
-                }
-                partial_chains
+    let mut total_found = 0;
+    let mut total_not_found = 0;
+    let mut count_no_chain = 0;
+    let mut new_certs: Vec<&Certificate> = Vec::new();
+    for (fp, info) in pool.fp_map.iter() {
+        if all_roots.test_fingerprint(fp) {
+            // skip root CAs
+            continue;
+        }
+        info.cert.format_issuer_subject(&mut stdout()).unwrap();
+        println!();
+        if !pool.build_chains(&info.cert, &all_roots).is_empty() {
+            let found = crtsh.check_crtsh(fp).unwrap();
+            if found {
+                total_found += 1;
             } else {
-                Vec::new()
+                total_not_found += 1;
+                new_certs.push(&info.cert);
             }
+
+            println!(
+                "{}, crtsh seen = {}, {} file paths",
+                fp,
+                found,
+                info.paths.len()
+            );
+        } else {
+            count_no_chain += 1;
+
+            println!("{}, doesn't chain, {} file paths", fp, info.paths.len());
         }
-        let fp_chains = recurse(
-            leaf,
-            &Vec::new(),
-            &self.fp_map,
-            &self.subject_map,
-            trust_roots,
-        );
-        fp_chains
-            .into_iter()
-            .map(|fp_chain| {
-                CertificateChain(
-                    fp_chain
-                        .into_iter()
-                        .map(|fp| self.fp_map[&fp].cert.get_bytes().clone())
-                        .collect(),
-                )
-            })
-            .collect()
+        let path_limit = 10;
+        for path in info.paths.iter().take(path_limit) {
+            println!("{}", path);
+        }
+        if info.paths.len() > path_limit {
+            println!("...");
+        }
+        println!();
     }
+    let total = total_found + total_not_found;
+    println!(
+        "{}/{} in crt.sh already, {}/{} not yet in crt.sh ({} did not chain to roots)",
+        total_found, total, total_not_found, total, count_no_chain
+    );
+    println!();
 
-    pub fn run<I>(&mut self, paths: I, crtsh: &CrtShServer, log_comms: &LogServers)
-    where
-        I: Iterator<Item = PathBuf>,
-    {
-        for path in paths {
-            self.scan_directory_or_file(path.as_path());
-        }
-        let mut all_roots_vec = Vec::new();
-        for log in self.logs.iter_mut() {
-            for root_cert in log.roots.iter() {
-                all_roots_vec.push(root_cert.clone());
-            }
-        }
-        for root_cert in all_roots_vec.iter() {
-            self.add_cert(root_cert.get_bytes().clone(), "log roots");
-        }
-        let mut all_roots = TrustRoots::new();
-        all_roots.add_roots(&all_roots_vec[..]);
-
-        let mut total_found = 0;
-        let mut total_not_found = 0;
-        let mut count_no_chain = 0;
-        let mut new_certs: Vec<&Certificate> = Vec::new();
-        for (fp, info) in self.fp_map.iter() {
-            if all_roots.test_fingerprint(fp) {
+    let mut new_submission_count = 0;
+    let new_certs_len = new_certs.len();
+    for cert in new_certs.into_iter() {
+        let mut any_chain = false;
+        let mut any_submission_success = false;
+        let mut all_submission_errors = true;
+        let mut last_submission_error: Option<APIError> = None;
+        for log in logs.iter() {
+            if log.trust_roots.test_fingerprint(&cert.fingerprint()) {
                 // skip root CAs
                 continue;
             }
-            info.cert.format_issuer_subject(&mut stdout()).unwrap();
-            println!();
-            if !self.build_chains(&info.cert, &all_roots).is_empty() {
-                let found = crtsh.check_crtsh(fp).unwrap();
-                if found {
-                    total_found += 1;
-                } else {
-                    total_not_found += 1;
-                    new_certs.push(&info.cert);
-                }
-
-                println!(
-                    "{}, crtsh seen = {}, {} file paths",
-                    fp,
-                    found,
-                    info.paths.len()
-                );
-            } else {
-                count_no_chain += 1;
-
-                println!("{}, doesn't chain, {} file paths", fp, info.paths.len());
+            if !log.will_accept_year(cert.get_not_after_year()) {
+                continue;
             }
-            let path_limit = 10;
-            for path in info.paths.iter().take(path_limit) {
-                println!("{}", path);
-            }
-            if info.paths.len() > path_limit {
-                println!("...");
-            }
-            println!();
-        }
-        let total = total_found + total_not_found;
-        println!(
-            "{}/{} in crt.sh already, {}/{} not yet in crt.sh ({} did not chain to roots)",
-            total_found, total, total_not_found, total, count_no_chain
-        );
-        println!();
-
-        let mut new_submission_count = 0;
-        let new_certs_len = new_certs.len();
-        for cert in new_certs.into_iter() {
-            let mut any_chain = false;
-            let mut any_submission_success = false;
-            let mut all_submission_errors = true;
-            let mut last_submission_error: Option<APIError> = None;
-            for log in self.logs.iter() {
-                if log.trust_roots.test_fingerprint(&cert.fingerprint()) {
-                    // skip root CAs
-                    continue;
-                }
-                if !log.will_accept_year(cert.get_not_after_year()) {
-                    continue;
-                }
-                let chains = self.build_chains(cert, &log.trust_roots);
-                for chain in chains.into_iter() {
-                    any_chain = true;
-                    match log_comms.submit_chain(&log, &chain) {
-                        Ok(_) => {
-                            if !any_submission_success {
-                                new_submission_count += 1;
-                            }
-                            any_submission_success = true;
-                            all_submission_errors = false;
-
-                            print!("submitted to {}: {}, ", log.get_url(), cert.fingerprint());
-                            cert.format_issuer_subject(&mut stdout()).unwrap();
-                            println!();
-                            println!();
-                            // only submit one chain
-                            break;
+            let chains = pool.build_chains(cert, &log.trust_roots);
+            for chain in chains.into_iter() {
+                any_chain = true;
+                match log_comms.submit_chain(&log, &chain) {
+                    Ok(_) => {
+                        if !any_submission_success {
+                            new_submission_count += 1;
                         }
-                        Err(APIError::Status(status)) => {
-                            all_submission_errors = false; // don't want to panic on this
+                        any_submission_success = true;
+                        all_submission_errors = false;
 
-                            print!(
-                                "submission was rejected by {} with reason {}: {}, ",
-                                log.get_url(),
-                                status,
-                                cert.fingerprint()
-                            );
-                            cert.format_issuer_subject(&mut stdout()).unwrap();
-                            println!();
-                            println!();
-                        }
-                        Err(e) => {
-                            println!("submission error: {} {:?}", e, e);
-                            last_submission_error = Some(e);
-                        }
+                        print!("submitted to {}: {}, ", log.get_url(), cert.fingerprint());
+                        cert.format_issuer_subject(&mut stdout()).unwrap();
+                        println!();
+                        println!();
+                        // only submit one chain
+                        break;
+                    }
+                    Err(APIError::Status(status)) => {
+                        all_submission_errors = false; // don't want to panic on this
+
+                        print!(
+                            "submission was rejected by {} with reason {}: {}, ",
+                            log.get_url(),
+                            status,
+                            cert.fingerprint()
+                        );
+                        cert.format_issuer_subject(&mut stdout()).unwrap();
+                        println!();
+                        println!();
+                    }
+                    Err(e) => {
+                        println!("submission error: {} {:?}", e, e);
+                        last_submission_error = Some(e);
                     }
                 }
             }
-            if any_chain && all_submission_errors {
-                let error = last_submission_error.unwrap();
-                let error_desc = error.to_string();
-                panic!(error_desc);
-            }
         }
-        println!(
-            "Successfully submitted {}/{} new certificates",
-            new_submission_count, new_certs_len
-        );
+        if any_chain && all_submission_errors {
+            let error = last_submission_error.unwrap();
+            let error_desc = error.to_string();
+            panic!(error_desc);
+        }
     }
+    println!(
+        "Successfully submitted {}/{} new certificates",
+        new_submission_count, new_certs_len
+    );
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Carver;
+    use super::FileCarver;
     use std::io::Cursor;
 
     #[test]
@@ -645,8 +666,8 @@ mod tests {
         ];
 
         let mut stream = Cursor::new(&BYTES);
-        let carver = Carver::new(Vec::new());
-        let certs = carver.carve_stream(&mut stream);
+        let file_carver = FileCarver::new();
+        let certs = file_carver.carve_stream(&mut stream);
         assert!(certs.is_empty());
     }
 
@@ -655,8 +676,8 @@ mod tests {
         const BYTES: &[u8] = b"-----BEGIN CERTIFICATE-----\nMIIC";
 
         let mut stream = Cursor::new(&BYTES);
-        let carver = Carver::new(Vec::new());
-        let certs = carver.carve_stream(&mut stream);
+        let file_carver = FileCarver::new();
+        let certs = file_carver.carve_stream(&mut stream);
         assert!(certs.is_empty());
     }
 
