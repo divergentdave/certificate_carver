@@ -2,6 +2,7 @@
 pub mod crtsh;
 pub mod ctlog;
 pub mod ldapprep;
+pub mod mocks;
 pub mod x509;
 
 use copy_in_place::copy_in_place;

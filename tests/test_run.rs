@@ -1,11 +1,9 @@
-mod mocks;
-
 use reqwest::Url;
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 
-use crate::mocks::{MockCrtShServer, MockLogServers};
 use certificate_carver::ctlog::{LogInfo, LogShard};
+use certificate_carver::mocks::{MockCrtShServer, MockLogServers};
 use certificate_carver::{run, CertificatePool};
 
 #[test]
