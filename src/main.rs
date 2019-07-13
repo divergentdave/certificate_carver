@@ -5,9 +5,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use certificate_carver::crtsh::{
-    CachedCrtShServer, CrtShServer, RealCrtShServer, RetryDelayCrtShServer,
-};
+use certificate_carver::crtsh::{CachedCrtShServer, RealCrtShServer, RetryDelayCrtShServer};
 use certificate_carver::ctlog::{LogInfo, LogShard, RealLogServers};
 use certificate_carver::{run, CertificatePool};
 
@@ -241,19 +239,13 @@ fn main() {
     let client = make_reqwest_client();
 
     let crtsh = RealCrtShServer::new(&client);
-    let crtsh = RetryDelayCrtShServer::new(&crtsh, Duration::new(5, 0));
+    let crtsh = RetryDelayCrtShServer::new(crtsh, Duration::new(5, 0));
     let cache_dir = Path::new("certificate_carver_cache");
-    let crtsh: Box<dyn CrtShServer> = match CachedCrtShServer::new(&crtsh, cache_dir) {
-        Ok(cached_crtsh) => Box::new(cached_crtsh),
-        Err(_) => {
-            println!("Warning: couldn't create or open cache");
-            Box::new(crtsh)
-        }
-    };
+    let crtsh = CachedCrtShServer::new(crtsh, cache_dir).expect("Couldn't create or open cache");
 
     let log_comms = RealLogServers::new(&client);
 
     let logs = make_log_list();
     let mut pool = CertificatePool::new();
-    run(&mut pool, logs, paths, crtsh.as_ref(), &log_comms);
+    run(&mut pool, logs, paths, &crtsh, &log_comms);
 }

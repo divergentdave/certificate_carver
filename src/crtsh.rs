@@ -39,25 +39,25 @@ impl CrtShServer for RealCrtShServer<'_> {
     }
 }
 
-pub struct CachedCrtShServer<'a> {
-    inner: &'a dyn CrtShServer,
+pub struct CachedCrtShServer<T: CrtShServer> {
+    inner: T,
     tree: Db,
 }
 
-impl<'a> CachedCrtShServer<'a> {
-    pub fn new(inner: &'a dyn CrtShServer, path: &Path) -> sled::Result<CachedCrtShServer<'a>> {
+impl<T: CrtShServer> CachedCrtShServer<T> {
+    pub fn new(inner: T, path: &Path) -> sled::Result<CachedCrtShServer<T>> {
         let tree = Db::start_default(path)?;
         Ok(CachedCrtShServer { inner, tree })
     }
 
-    pub fn new_temporary(inner: &'a dyn CrtShServer) -> sled::Result<CachedCrtShServer<'a>> {
+    pub fn new_temporary(inner: T) -> sled::Result<CachedCrtShServer<T>> {
         let config = sled::ConfigBuilder::default().temporary(true).build();
         let tree = Db::start(config)?;
         Ok(CachedCrtShServer { inner, tree })
     }
 }
 
-impl<'a> CrtShServer for CachedCrtShServer<'a> {
+impl<T: CrtShServer> CrtShServer for CachedCrtShServer<T> {
     fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, APIError> {
         if let Ok(Some(_)) = self.tree.get(fp.as_ref()) {
             return Ok(true);
@@ -73,8 +73,8 @@ impl<'a> CrtShServer for CachedCrtShServer<'a> {
     }
 }
 
-pub struct RetryDelayCrtShServer<'a> {
-    inner: &'a dyn CrtShServer,
+pub struct RetryDelayCrtShServer<T: CrtShServer> {
+    inner: T,
     delay: Duration,
     state: Mutex<RetryDelayState>,
 }
@@ -83,8 +83,8 @@ struct RetryDelayState {
     last_request: Instant,
 }
 
-impl<'a> RetryDelayCrtShServer<'a> {
-    pub fn new(inner: &'a dyn CrtShServer, delay: Duration) -> RetryDelayCrtShServer<'a> {
+impl<T: CrtShServer> RetryDelayCrtShServer<T> {
+    pub fn new(inner: T, delay: Duration) -> RetryDelayCrtShServer<T> {
         let state = RetryDelayState {
             last_request: Instant::now() - delay,
         };
@@ -96,7 +96,7 @@ impl<'a> RetryDelayCrtShServer<'a> {
     }
 }
 
-impl CrtShServer for RetryDelayCrtShServer<'_> {
+impl<T: CrtShServer> CrtShServer for RetryDelayCrtShServer<T> {
     fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, APIError> {
         let mut guard = self.state.lock().unwrap();
         let mut error_count = 0;

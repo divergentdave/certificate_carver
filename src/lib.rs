@@ -519,15 +519,13 @@ impl FileCarver {
     }
 }
 
-pub fn run<I>(
+pub fn run<I: Iterator<Item = PathBuf>, C: CrtShServer, L: LogServers>(
     pool: &mut CertificatePool,
     mut logs: Vec<LogInfo>,
     paths: I,
-    crtsh: &dyn CrtShServer,
-    log_comms: &dyn LogServers,
-) where
-    I: Iterator<Item = PathBuf>,
-{
+    crtsh: &C,
+    log_comms: &L,
+) {
     let mut file_carver = FileCarver::new();
     for path in paths {
         file_carver.scan_directory_or_file(path.as_path(), pool);

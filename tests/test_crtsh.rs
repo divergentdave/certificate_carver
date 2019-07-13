@@ -7,7 +7,7 @@ use certificate_carver::CertificateFingerprint;
 #[test]
 fn test_cache() {
     let crtsh = MockCrtShServer::always_true();
-    let crtsh = CachedCrtShServer::new_temporary(&crtsh).unwrap();
+    let crtsh = CachedCrtShServer::new_temporary(crtsh).unwrap();
     let fp = CertificateFingerprint([
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0,
@@ -19,7 +19,7 @@ fn test_cache() {
 #[test]
 fn test_delay() {
     let crtsh = MockCrtShServer::default();
-    let crtsh = RetryDelayCrtShServer::new(&crtsh, Duration::new(1, 0));
+    let crtsh = RetryDelayCrtShServer::new(crtsh, Duration::new(1, 0));
     let fp = CertificateFingerprint([
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0,
