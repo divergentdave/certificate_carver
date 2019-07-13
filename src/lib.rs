@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
-use std::io::{stdout, Cursor, Read, Seek, SeekFrom};
+use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::str;
 use zip::read::read_zipfile_from_stream;
@@ -553,8 +553,7 @@ pub fn run<I>(
             // skip root CAs
             continue;
         }
-        info.cert.format_issuer_subject(&mut stdout()).unwrap();
-        println!();
+        println!("{}", info.cert.format_issuer_subject());
         if !pool.build_chains(&info.cert, &all_roots).is_empty() {
             let found = crtsh.check_crtsh(fp).unwrap();
             if found {
@@ -617,9 +616,12 @@ pub fn run<I>(
                         any_submission_success = true;
                         all_submission_errors = false;
 
-                        print!("submitted to {}: {}, ", log.get_url(), cert.fingerprint());
-                        cert.format_issuer_subject(&mut stdout()).unwrap();
-                        println!();
+                        println!(
+                            "submitted to {}: {}, {}",
+                            log.get_url(),
+                            cert.fingerprint(),
+                            cert.format_issuer_subject()
+                        );
                         println!();
                         // only submit one chain
                         break;
@@ -627,14 +629,13 @@ pub fn run<I>(
                     Err(APIError::Status(status)) => {
                         all_submission_errors = false; // don't want to panic on this
 
-                        print!(
-                            "submission was rejected by {} with reason {}: {}, ",
+                        println!(
+                            "submission was rejected by {} with reason {}: {}, {}",
                             log.get_url(),
                             status,
-                            cert.fingerprint()
+                            cert.fingerprint(),
+                            cert.format_issuer_subject(),
                         );
-                        cert.format_issuer_subject(&mut stdout()).unwrap();
-                        println!();
                         println!();
                     }
                     Err(e) => {

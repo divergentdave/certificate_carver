@@ -2,8 +2,8 @@ use encoding::all::ISO_8859_1;
 use encoding::{DecoderTrap, Encoding};
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
+use std::fmt::Display;
 use std::hash::{Hash, Hasher};
-use std::io::Write;
 use untrusted;
 
 use crate::{CertificateBytes, CertificateFingerprint};
@@ -191,11 +191,8 @@ impl Certificate {
         self.fp
     }
 
-    pub fn format_issuer_subject(&self, f: &mut dyn Write) -> std::io::Result<()> {
-        write!(f, "issuer=")?;
-        self.issuer.format(f)?;
-        write!(f, ", subject=")?;
-        self.subject.format(f)
+    pub fn format_issuer_subject(&self) -> String {
+        format!("issuer={}, subject={}", self.issuer, self.subject)
     }
 
     pub fn issued(&self, other: &Certificate) -> bool {
@@ -542,8 +539,10 @@ impl NameInfo {
         })?;
         Ok(results)
     }
+}
 
-    pub fn format(&self, f: &mut dyn Write) -> std::io::Result<()> {
+impl Display for NameInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut space = false;
         match self.rdns {
             Ok(ref rdns) => {
@@ -647,7 +646,7 @@ pub enum Error {
     BadDERSignature2,
 }
 
-impl std::fmt::Display for Error {
+impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         match self {
             Error::SerialNumberNotInteger => write!(f, "Certificate serial number is not an integer"),
