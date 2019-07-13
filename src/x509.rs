@@ -191,7 +191,7 @@ impl Certificate {
         self.fp
     }
 
-    pub fn format_issuer_subject(&self, f: &mut Write) -> std::io::Result<()> {
+    pub fn format_issuer_subject(&self, f: &mut dyn Write) -> std::io::Result<()> {
         write!(f, "issuer=")?;
         self.issuer.format(f)?;
         write!(f, ", subject=")?;
@@ -543,7 +543,7 @@ impl NameInfo {
         Ok(results)
     }
 
-    pub fn format(&self, f: &mut Write) -> std::io::Result<()> {
+    pub fn format(&self, f: &mut dyn Write) -> std::io::Result<()> {
         let mut space = false;
         match self.rdns {
             Ok(ref rdns) => {

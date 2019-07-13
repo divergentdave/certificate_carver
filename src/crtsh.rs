@@ -40,17 +40,17 @@ impl CrtShServer for RealCrtShServer<'_> {
 }
 
 pub struct CachedCrtShServer<'a> {
-    inner: &'a CrtShServer,
+    inner: &'a dyn CrtShServer,
     tree: Db,
 }
 
 impl<'a> CachedCrtShServer<'a> {
-    pub fn new(inner: &'a CrtShServer, path: &Path) -> sled::Result<CachedCrtShServer<'a>> {
+    pub fn new(inner: &'a dyn CrtShServer, path: &Path) -> sled::Result<CachedCrtShServer<'a>> {
         let tree = Db::start_default(path)?;
         Ok(CachedCrtShServer { inner, tree })
     }
 
-    pub fn new_temporary(inner: &'a CrtShServer) -> sled::Result<CachedCrtShServer<'a>> {
+    pub fn new_temporary(inner: &'a dyn CrtShServer) -> sled::Result<CachedCrtShServer<'a>> {
         let config = sled::ConfigBuilder::default().temporary(true).build();
         let tree = Db::start(config)?;
         Ok(CachedCrtShServer { inner, tree })
@@ -74,7 +74,7 @@ impl<'a> CrtShServer for CachedCrtShServer<'a> {
 }
 
 pub struct RetryDelayCrtShServer<'a> {
-    inner: &'a CrtShServer,
+    inner: &'a dyn CrtShServer,
     delay: Duration,
     state: Mutex<RetryDelayState>,
 }
@@ -84,7 +84,7 @@ struct RetryDelayState {
 }
 
 impl<'a> RetryDelayCrtShServer<'a> {
-    pub fn new(inner: &'a CrtShServer, delay: Duration) -> RetryDelayCrtShServer<'a> {
+    pub fn new(inner: &'a dyn CrtShServer, delay: Duration) -> RetryDelayCrtShServer<'a> {
         let state = RetryDelayState {
             last_request: Instant::now() - delay,
         };

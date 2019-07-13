@@ -523,8 +523,8 @@ pub fn run<I>(
     pool: &mut CertificatePool,
     mut logs: Vec<LogInfo>,
     paths: I,
-    crtsh: &CrtShServer,
-    log_comms: &LogServers,
+    crtsh: &dyn CrtShServer,
+    log_comms: &dyn LogServers,
 ) where
     I: Iterator<Item = PathBuf>,
 {

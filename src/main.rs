@@ -243,7 +243,7 @@ fn main() {
     let crtsh = RealCrtShServer::new(&client);
     let crtsh = RetryDelayCrtShServer::new(&crtsh, Duration::new(5, 0));
     let cache_dir = Path::new("certificate_carver_cache");
-    let crtsh: Box<CrtShServer> = match CachedCrtShServer::new(&crtsh, cache_dir) {
+    let crtsh: Box<dyn CrtShServer> = match CachedCrtShServer::new(&crtsh, cache_dir) {
         Ok(cached_crtsh) => Box::new(cached_crtsh),
         Err(_) => {
             println!("Warning: couldn't create or open cache");
