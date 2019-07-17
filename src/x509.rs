@@ -739,7 +739,7 @@ fn read_tag_and_get_value<'a>(
         }
     };
 
-    let inner = input.skip_and_get_input(length).map_err(|_| error)?;
+    let inner = input.read_bytes(length).map_err(|_| error)?;
     Ok((tag, inner))
 }
 
@@ -923,7 +923,7 @@ fn bit_string_with_no_unused_bits<'a>(
         if unused_bits_at_end != 0 {
             return Err(error);
         }
-        Ok(value.skip_to_end())
+        Ok(value.read_bytes_to_end())
     })
 }
 
