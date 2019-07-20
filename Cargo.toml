@@ -13,6 +13,8 @@ encoding = "0.2"
 hex = "0.3"
 jwalk = "0.4.0"
 lazy_static = "1.0"
+pdf = "0.6.3"
+pdf_derive = "0.1.17"
 regex = "1.1"
 reqwest = "0.9"
 serde = "1.0"
@@ -24,3 +26,7 @@ stringprep = "0.1.2"
 unicode-normalization = "0.1"
 untrusted = "0.7.0"
 zip = "0.5"
+error-chain = "0.12.1"
+
+[patch.crates-io]
+pdf = { git = "https://github.com/divergentdave/pdf", branch = "hex-string" }

@@ -3,6 +3,7 @@ pub mod crtsh;
 pub mod ctlog;
 pub mod ldapprep;
 pub mod mocks;
+pub mod pdfsig;
 pub mod x509;
 
 use copy_in_place::copy_in_place;
@@ -25,6 +26,7 @@ use crate::crtsh::CrtShServer;
 use crate::ctlog::{LogInfo, LogServers, TrustRoots};
 use crate::x509::{Certificate, NameInfo};
 
+const PDF_MAGIC: [u8; 4] = [0x25, 0x50, 0x44, 0x46];
 const ZIP_MAGIC: [u8; 4] = [0x50, 0x4b, 3, 4];
 
 // This was removed from base64 in version 0.10.0
@@ -449,9 +451,28 @@ impl FileCarver {
             }
             results.append(&mut self.carve_stream(&mut file));
             results
+        } else if magic == PDF_MAGIC {
+            if let Err(_) = file.seek(SeekFrom::Start(0)) {
+                return Vec::new();
+            }
+            let mut buffer = Vec::new();
+            if let Err(_) = file.read_to_end(&mut buffer) {
+                return Vec::new();
+            }
+            let mut results = self.carve_pdf(&buffer).unwrap_or_else(Vec::new);
+            results.append(&mut self.carve_stream(&mut Cursor::new(buffer)));
+            results
         } else {
             self.carve_stream(&mut file)
         }
+    }
+
+    fn carve_pdf(&mut self, data: &Vec<u8>) -> Option<Vec<CertificateBytes>> {
+        let mut results = Vec::new();
+        for blob in pdfsig::find_signature_certificates(data)?.into_iter() {
+            results.append(&mut self.carve_stream(&mut Cursor::new(blob)));
+        }
+        Some(results)
     }
 
     pub fn scan_file_object<RS: Read + Seek>(
