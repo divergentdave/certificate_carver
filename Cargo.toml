@@ -29,4 +29,4 @@ zip = "0.5"
 error-chain = "0.12.1"
 
 [patch.crates-io]
-pdf = { git = "https://github.com/divergentdave/pdf", branch = "hex-string" }
+pdf = { git = "https://github.com/pdf-rs/pdf", rev = "b7bdfa4135294dcbd4ba24aca425e5eb417ca7b2" }
