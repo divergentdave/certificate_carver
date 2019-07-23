@@ -59,8 +59,10 @@ fn test_xmldsig() {
         .fingerprint()
         .as_ref()
         == root_fp));
-    for cert in certs.into_iter() {
-        pool.add_cert(cert, "files/collected/OJ_L_2014_189_FULL.xml");
+    for certbytes in certs.into_iter() {
+        if let Ok(cert) = Certificate::parse(certbytes) {
+            pool.add_cert(cert, "files/collected/OJ_L_2014_189_FULL.xml".to_string());
+        }
     }
     assert!(pool.fp_map.iter().any(|(fp, _)| fp.as_ref() == root_fp));
     assert_eq!(pool.fp_map.len(), 2);
