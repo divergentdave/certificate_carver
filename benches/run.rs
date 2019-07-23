@@ -2,7 +2,7 @@
 extern crate test;
 
 use certificate_carver::mocks::{MockCrtShServer, MockLogServers};
-use certificate_carver::{run, CertificatePool};
+use certificate_carver::run;
 use std::path::PathBuf;
 use test::Bencher;
 
