@@ -175,6 +175,7 @@ impl<R: Read> BufReaderOverlap<R> {
     }
 }
 
+#[derive(Default)]
 pub struct CertificatePool {
     pub fp_map: HashMap<CertificateFingerprint, CertificateRecord>,
     pub subject_map: HashMap<NameInfo, HashSet<CertificateFingerprint>>,
@@ -182,10 +183,7 @@ pub struct CertificatePool {
 
 impl CertificatePool {
     pub fn new() -> CertificatePool {
-        CertificatePool {
-            fp_map: HashMap::new(),
-            subject_map: HashMap::new(),
-        }
+        CertificatePool::default()
     }
 
     pub fn add_cert(&mut self, cert: Certificate, path: String) {
@@ -297,6 +295,12 @@ pub struct MatchCert {
 
 pub struct FileCarver {
     caps: CaptureLocations,
+}
+
+impl Default for FileCarver {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FileCarver {
