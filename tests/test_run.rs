@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use certificate_carver::ctlog::{LogInfo, LogShard};
 use certificate_carver::mocks::{MockCrtShServer, MockLogServers};
-use certificate_carver::{run, CertificatePool};
+use certificate_carver::run;
 
 #[test]
 fn test_run() {
@@ -14,7 +14,6 @@ fn test_run() {
         LogShard::Any,
         include_str!("../roots/pilot-daedalus.json"),
     )];
-    let mut pool = CertificatePool::new();
     let mut args = Vec::new();
     args.push(PathBuf::from(format!(
         "{}/tests/files/davidsherenowitsa.party",
@@ -22,7 +21,7 @@ fn test_run() {
     )));
     let crtsh = MockCrtShServer::default();
     let log_comms = MockLogServers::new();
-    run(&mut pool, logs, args.into_iter(), &crtsh, &log_comms);
+    run(logs, args.into_iter(), &crtsh, &log_comms);
 
     let mut chains = log_comms.submitted_chains.borrow_mut();
     chains.sort_by_key(|(url, chain)| -> (Url, Vec<Vec<u8>>) {
@@ -36,7 +35,7 @@ fn test_run() {
         )
     });
 
-    assert!(chains.len() == 2);
+    assert_eq!(chains.len(), 2);
 
     let davidsherenowitsa_party_fp = [
         0x9C, 0x1E, 0xE5, 0x12, 0x8A, 0x1E, 0xDF, 0x87, 0xD7, 0x4F, 0x4D, 0x5E, 0x5C, 0x0D, 0x90,

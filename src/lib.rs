@@ -6,16 +6,16 @@ pub mod mocks;
 pub mod x509;
 
 use copy_in_place::copy_in_place;
-use jwalk::WalkDir;
 use lazy_static::lazy_static;
+use rayon::iter::{ParallelBridge, ParallelIterator};
 use regex::bytes::{CaptureLocations, Regex};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom};
-use std::path::{Path, PathBuf};
-use std::str;
+use std::path::PathBuf;
+use walkdir::WalkDir;
 use zip::read::read_zipfile_from_stream;
 
 #[cfg(unix)]
@@ -188,20 +188,18 @@ impl CertificatePool {
         }
     }
 
-    pub fn add_cert(&mut self, der: CertificateBytes, path: &str) {
-        if let Ok(cert) = Certificate::parse(der) {
-            if cert.looks_like_ca() || cert.looks_like_server() {
-                let digest = cert.fingerprint();
-                let subject = cert.get_subject().clone();
+    pub fn add_cert(&mut self, cert: Certificate, path: String) {
+        if cert.looks_like_ca() || cert.looks_like_server() {
+            let digest = cert.fingerprint();
+            let subject = cert.get_subject().clone();
 
-                let entry = self.fp_map.entry(digest);
-                let info = entry.or_insert_with(|| CertificateRecord::new(cert));
-                info.paths.push(String::from(path));
+            let entry = self.fp_map.entry(digest);
+            let info = entry.or_insert_with(|| CertificateRecord::new(cert));
+            info.paths.push(path);
 
-                let entry = self.subject_map.entry(subject);
-                let fp_vec = entry.or_insert_with(HashSet::new);
-                fp_vec.insert(digest);
-            }
+            let entry = self.subject_map.entry(subject);
+            let fp_vec = entry.or_insert_with(HashSet::new);
+            fp_vec.insert(digest);
         }
     }
 
@@ -285,6 +283,16 @@ lazy_static! {
     static ref XMLDSIG_END_RE: Regex = Regex::new(
         "</(?:[A-Z_a-z][A-Z_a-z-.0-9]*:)?(?:X509Certificate|EncapsulatedTimeStamp|CertifiedRole|EncapsulatedX509Certificate|EncapsulatedCRLValue|EncapsulatedOCSPValue)>"
     ).unwrap();
+}
+
+pub struct MatchBytes {
+    pub certbytes: CertificateBytes,
+    pub path: String,
+}
+
+pub struct MatchCert {
+    pub cert: Certificate,
+    pub path: String,
 }
 
 pub struct FileCarver {
@@ -457,79 +465,79 @@ impl FileCarver {
     pub fn scan_file_object<RS: Read + Seek>(
         &mut self,
         mut file: &mut RS,
-        path: &str,
-        pool: &mut CertificatePool,
-    ) {
-        for certbytes in self.carve_file(&mut file).into_iter() {
-            pool.add_cert(certbytes, path);
-        }
-    }
-
-    fn scan_file_path(&mut self, path: &Path, pool: &mut CertificatePool) {
-        if let Ok(mut file) = File::open(path) {
-            self.scan_file_object(
-                &mut file,
-                path.to_str().unwrap_or("(unprintable path)"),
-                pool,
-            );
-        }
-    }
-
-    #[cfg(not(unix))]
-    fn filter_file_metadata(&self, metadata: &std::fs::Metadata) -> bool {
-        metadata.len() > 0 && !metadata.file_type().is_symlink()
-    }
-
-    #[cfg(unix)]
-    fn filter_file_metadata(&self, metadata: &std::fs::Metadata) -> bool {
-        if metadata.len() == 0 {
-            return false;
-        }
-        let file_type = metadata.file_type();
-        !file_type.is_symlink()
-            && !file_type.is_block_device()
-            && !file_type.is_char_device()
-            && !file_type.is_fifo()
-            && !file_type.is_socket()
-    }
-
-    fn scan_directory(&mut self, path: &Path, pool: &mut CertificatePool) {
-        let walkdir = WalkDir::new(path).preload_metadata(true);
-        for entry in walkdir.into_iter().filter_map(Result::ok) {
-            let should_scan = match entry.metadata {
-                Some(Ok(ref metadata)) => self.filter_file_metadata(metadata),
-                _ => false,
-            };
-            if should_scan {
-                self.scan_file_path(&entry.path(), pool);
-            }
-        }
-    }
-
-    pub fn scan_directory_or_file(&mut self, path: &Path, pool: &mut CertificatePool) {
-        if path.is_dir() {
-            self.scan_directory(path, pool);
-        } else {
-            if let Ok(metadata) = path.symlink_metadata() {
-                if self.filter_file_metadata(&metadata) {
-                    self.scan_file_path(path, pool);
-                }
-            }
-        }
+        path_buf: PathBuf,
+    ) -> Vec<MatchBytes> {
+        self.carve_file(&mut file)
+            .into_iter()
+            .map(|certbytes| MatchBytes {
+                certbytes,
+                path: path_buf.to_str().unwrap_or("(unprintable path)").to_owned(),
+            })
+            .collect()
     }
 }
 
-pub fn run<I: Iterator<Item = PathBuf>, C: CrtShServer, L: LogServers>(
-    pool: &mut CertificatePool,
+#[cfg(not(unix))]
+fn filter_file_metadata(metadata: &std::fs::Metadata) -> bool {
+    metadata.len() > 0 && !metadata.file_type().is_symlink()
+}
+
+#[cfg(unix)]
+fn filter_file_metadata(metadata: &std::fs::Metadata) -> bool {
+    if metadata.len() == 0 {
+        return false;
+    }
+    let file_type = metadata.file_type();
+    !file_type.is_symlink()
+        && !file_type.is_block_device()
+        && !file_type.is_char_device()
+        && !file_type.is_fifo()
+        && !file_type.is_socket()
+}
+
+pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
     mut logs: Vec<LogInfo>,
     paths: I,
     crtsh: &C,
     log_comms: &L,
 ) {
-    let mut file_carver = FileCarver::new();
-    for path in paths {
-        file_carver.scan_directory_or_file(path.as_path(), pool);
+    let mut pool = CertificatePool::new();
+    let matches: Vec<MatchCert> = paths
+        .par_bridge()
+        .flat_map(|path| {
+            WalkDir::new(path)
+                .into_iter()
+                .par_bridge()
+                .filter_map(Result::ok)
+                .filter(|entry| match entry.metadata() {
+                    Ok(ref metadata) => filter_file_metadata(metadata),
+                    Err(_) => false,
+                })
+                .map(|entry| entry.into_path())
+        })
+        .map_init(FileCarver::new, |file_carver, path| {
+            if let Ok(mut file) = File::open(&path) {
+                file_carver.scan_file_object(&mut file, path)
+            } else {
+                vec![]
+            }
+        })
+        .flatten()
+        .filter_map(
+            |match_bytes| match Certificate::parse(match_bytes.certbytes) {
+                Ok(cert) => Some(MatchCert {
+                    cert,
+                    path: match_bytes.path,
+                }),
+                Err(_) => None,
+            },
+        )
+        .filter(|match_cert| match_cert.cert.looks_like_ca() || match_cert.cert.looks_like_server())
+        .collect();
+    for match_cert in matches.into_iter() {
+        pool.add_cert(match_cert.cert, match_cert.path);
     }
+
     let mut all_roots_vec = Vec::new();
     for log in logs.iter_mut() {
         for root_cert in log.roots.iter() {
@@ -537,7 +545,7 @@ pub fn run<I: Iterator<Item = PathBuf>, C: CrtShServer, L: LogServers>(
         }
     }
     for root_cert in all_roots_vec.iter() {
-        pool.add_cert(root_cert.get_bytes().clone(), "log roots");
+        pool.add_cert(root_cert.clone(), "log roots".to_string());
     }
     let mut all_roots = TrustRoots::new();
     all_roots.add_roots(&all_roots_vec[..]);

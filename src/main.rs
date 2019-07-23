@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use certificate_carver::crtsh::{CachedCrtShServer, RealCrtShServer, RetryDelayCrtShServer};
 use certificate_carver::ctlog::{LogInfo, LogShard, RealLogServers};
-use certificate_carver::{run, CertificatePool};
+use certificate_carver::run;
 
 const PILOT_DAEDALUS_ROOTS: &str = include_str!("../roots/pilot-daedalus.json");
 const ICARUS_ROOTS: &str = include_str!("../roots/icarus.json");
@@ -246,6 +246,5 @@ fn main() {
     let log_comms = RealLogServers::new(&client);
 
     let logs = make_log_list();
-    let mut pool = CertificatePool::new();
-    run(&mut pool, logs, paths, &crtsh, &log_comms);
+    run(logs, paths, &crtsh, &log_comms);
 }

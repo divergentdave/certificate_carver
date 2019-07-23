@@ -1,6 +1,7 @@
 mod utils;
 
 use std::io::Cursor;
+use std::path::PathBuf;
 
 use certificate_carver::ctlog::{LogInfo, LogShard};
 use certificate_carver::x509::Certificate;
@@ -34,16 +35,24 @@ fn test_cross_signatures() {
     let cert4_pem =
         include_bytes!("files/bespoke/intermediate_b/intermediate_a_signed_by_intermediate_b.crt");
     let cert4_parsed = Certificate::parse(decode_pem(cert4_pem)).unwrap();
-    let mut root = Cursor::new(root_pem.to_vec());
-    let mut cert1 = Cursor::new(cert1_pem.to_vec());
-    let mut cert2 = Cursor::new(cert2_pem.to_vec());
-    let mut cert3 = Cursor::new(cert3_pem.to_vec());
-    let mut cert4 = Cursor::new(cert4_pem.to_vec());
-    file_carver.scan_file_object(&mut root, "root", &mut pool);
-    file_carver.scan_file_object(&mut cert1, "cert1", &mut pool);
-    file_carver.scan_file_object(&mut cert2, "cert2", &mut pool);
-    file_carver.scan_file_object(&mut cert3, "cert3", &mut pool);
-    file_carver.scan_file_object(&mut cert4, "cert4", &mut pool);
+    for (pem, path) in [
+        (root_pem.to_vec(), "root"),
+        (cert1_pem.to_vec(), "cert1"),
+        (cert2_pem.to_vec(), "cert2"),
+        (cert3_pem.to_vec(), "cert3"),
+        (cert4_pem.to_vec(), "cert4"),
+    ]
+    .iter()
+    {
+        let mut cursor = Cursor::new(pem);
+        let result = file_carver.scan_file_object(&mut cursor, PathBuf::from(*path));
+        assert_eq!(result.len(), 1);
+        result.into_iter().for_each(|cert_match| {
+            if let Ok(cert) = Certificate::parse(cert_match.certbytes) {
+                pool.add_cert(cert, cert_match.path)
+            }
+        });
+    }
     assert_eq!(pool.fp_map.len(), 5);
 
     let mut log = LogInfo::new("http://127.0.0.0/", LogShard::Any, "{\"certificates\":[]}");
