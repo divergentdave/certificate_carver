@@ -2,7 +2,7 @@
 extern crate test;
 
 use certificate_carver::mocks::{MockCrtShServer, MockLogServers};
-use certificate_carver::{run, CertificatePool};
+use certificate_carver::run;
 use std::path::PathBuf;
 use test::Bencher;
 
@@ -16,13 +16,6 @@ fn bench_run(b: &mut Bencher) {
     let crtsh = MockCrtShServer::default();
     let log_comms = MockLogServers::new();
     b.iter(|| {
-        let mut pool = CertificatePool::new();
-        run(
-            &mut pool,
-            vec![],
-            args.clone().into_iter(),
-            &crtsh,
-            &log_comms,
-        );
+        run(vec![], args.clone().into_iter(), &crtsh, &log_comms);
     });
 }

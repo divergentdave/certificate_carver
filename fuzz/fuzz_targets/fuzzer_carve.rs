@@ -2,7 +2,7 @@
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    let carver = certificate_carver::Carver::new(Vec::new());
+    let mut file_carver = certificate_carver::FileCarver::new();
     let mut cursor = std::io::Cursor::new(data);
-    carver.carve_stream(&mut cursor);
+    file_carver.carve_stream(&mut cursor);
 });
