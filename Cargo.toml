@@ -30,5 +30,5 @@ walkdir = "2.2.9"
 zip = "0.5"
 
 [patch.crates-io]
-pdf = { git = "https://github.com/pdf-rs/pdf", rev = "da89789fc50b68f3f97b161e87da1d08ccbc8e1f" }
-pdf_derive = { git = "https://github.com/pdf-rs/pdf", rev = "da89789fc50b68f3f97b161e87da1d08ccbc8e1f" }
+pdf = { git = "https://github.com/pdf-rs/pdf", rev = "429eb313d735dc18f6c07859827b011d4b2a45bd" }
+pdf_derive = { git = "https://github.com/pdf-rs/pdf", rev = "429eb313d735dc18f6c07859827b011d4b2a45bd" }
