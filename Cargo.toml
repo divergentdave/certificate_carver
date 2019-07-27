@@ -13,8 +13,8 @@ encoding = "0.2"
 error-chain = "0.12.1"
 hex = "0.3"
 lazy_static = "1.0"
-pdf = "0.6.3"
-pdf_derive = "0.1.17"
+pdf = "0.7.0"
+pdf_derive = "0.1.18"
 rayon = "1.1.0"
 regex = "1.1"
 reqwest = "0.9"
@@ -30,4 +30,5 @@ walkdir = "2.2.9"
 zip = "0.5"
 
 [patch.crates-io]
-pdf = { git = "https://github.com/pdf-rs/pdf", rev = "b7bdfa4135294dcbd4ba24aca425e5eb417ca7b2" }
+pdf = { git = "https://github.com/pdf-rs/pdf", rev = "da89789fc50b68f3f97b161e87da1d08ccbc8e1f" }
+pdf_derive = { git = "https://github.com/pdf-rs/pdf", rev = "da89789fc50b68f3f97b161e87da1d08ccbc8e1f" }

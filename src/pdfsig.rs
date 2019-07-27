@@ -1,9 +1,8 @@
-use error_chain::bail;
 use pdf;
 use pdf::backend::Backend;
-use pdf::object::{Object, Resolve};
-use pdf::primitive::{Dictionary, PdfString, Primitive};
-use pdf::Result;
+use pdf::file::Storage;
+use pdf::object::Object;
+use pdf::primitive::{PdfString, Primitive};
 use pdf_derive::Object;
 
 #[derive(Object)]
@@ -45,9 +44,8 @@ struct Value {
 pub fn find_signature_certificates(data: &Vec<u8>) -> Option<Vec<Vec<u8>>> {
     let mut results = Vec::new();
     let (refs, trailer) = data.read_xref_table_and_trailer().ok()?;
-    let trailer =
-        Trailer::from_primitive(Primitive::Dictionary(trailer), &|r| data.resolve(&refs, r))
-            .ok()?;
+    let storage = Storage::new(data.clone(), refs);
+    let trailer = Trailer::from_primitive(Primitive::Dictionary(trailer), &storage).ok()?;
     for field in trailer.root.forms?.fields.into_iter() {
         if field.field_type == "Sig" {
             if let Some(value) = field.value {
