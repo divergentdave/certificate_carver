@@ -41,10 +41,10 @@ struct Value {
     pub cert: Option<PdfString>,
 }
 
-pub fn find_signature_certificates(data: &Vec<u8>) -> Option<Vec<Vec<u8>>> {
+pub fn find_signature_certificates(data: Vec<u8>) -> Option<Vec<Vec<u8>>> {
     let mut results = Vec::new();
     let (refs, trailer) = data.read_xref_table_and_trailer().ok()?;
-    let storage = Storage::new(data.clone(), refs);
+    let storage = Storage::new(data, refs);
     let trailer = Trailer::from_primitive(Primitive::Dictionary(trailer), &storage).ok()?;
     for field in trailer.root.forms?.fields.into_iter() {
         if field.field_type == "Sig" {

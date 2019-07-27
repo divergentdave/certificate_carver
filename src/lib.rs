@@ -471,15 +471,17 @@ impl FileCarver {
             if let Err(_) = file.read_to_end(&mut buffer) {
                 return Vec::new();
             }
-            let mut results = self.carve_pdf(&buffer).unwrap_or_else(Vec::new);
-            results.append(&mut self.carve_stream(&mut Cursor::new(buffer)));
+            let mut cursor = Cursor::new(buffer);
+            let mut results = self.carve_stream(&mut cursor);
+            let buffer = cursor.into_inner();
+            results.append(&mut self.carve_pdf(buffer).unwrap_or_else(Vec::new));
             results
         } else {
             self.carve_stream(&mut file)
         }
     }
 
-    fn carve_pdf(&mut self, data: &Vec<u8>) -> Option<Vec<CertificateBytes>> {
+    fn carve_pdf(&mut self, data: Vec<u8>) -> Option<Vec<CertificateBytes>> {
         let mut results = Vec::new();
         for blob in pdfsig::find_signature_certificates(data)?.into_iter() {
             results.append(&mut self.carve_stream(&mut Cursor::new(blob)));
