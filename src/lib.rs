@@ -5,7 +5,6 @@ pub mod ldapprep;
 pub mod mocks;
 pub mod x509;
 
-use copy_in_place::copy_in_place;
 use lazy_static::lazy_static;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use regex::bytes::{CaptureLocations, Regex};
@@ -153,7 +152,7 @@ impl<R: Read> BufReaderOverlap<R> {
         let mut eof = false;
         if remaining <= min_size {
             if self.pos > 0 {
-                copy_in_place(&mut self.buf, self.pos..self.cap, 0);
+                self.buf.copy_within(self.pos..self.cap, 0);
                 self.cap = remaining;
                 self.pos = 0;
             }
