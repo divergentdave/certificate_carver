@@ -416,7 +416,7 @@ fn parse_directory_string(raw: &[u8]) -> Option<String> {
                 Err(_) => None,
             }
         } else {
-            return None;
+            None
         }
     } else {
         None
