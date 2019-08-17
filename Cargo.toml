@@ -3,6 +3,7 @@ name = "certificate_carver"
 version = "0.1.7-alpha"
 authors = ["David Cook <divergentdave@gmail.com>"]
 edition = "2018"
+default-run = "certificate_carver"
 
 [dependencies]
 base64 = "0.10"
