@@ -7,7 +7,7 @@ default-run = "certificate_carver"
 
 [dependencies]
 base64 = "0.10"
-chrono = "0.4.8"
+chrono = "0.4.9"
 clap = "2.33.0"
 encoding = "0.2"
 hex = "0.3"
