@@ -527,7 +527,6 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
                     _ => false,
                 })
                 .map(|entry| entry.path())
-
         })
         .map_init(FileCarver::new, |file_carver, path| {
             if let Ok(mut file) = File::open(&path) {
