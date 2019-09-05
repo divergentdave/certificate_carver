@@ -5,6 +5,7 @@ pub mod ldapprep;
 pub mod mocks;
 pub mod x509;
 
+use jwalk::WalkDir;
 use lazy_static::lazy_static;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use regex::bytes::{CaptureLocations, Regex};
@@ -15,7 +16,6 @@ use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::path::PathBuf;
 use std::sync::mpsc;
-use walkdir::WalkDir;
 use zip::read::read_zipfile_from_stream;
 
 #[cfg(unix)]
@@ -517,14 +517,16 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
         .par_bridge()
         .flat_map(|path| {
             WalkDir::new(path)
+                .preload_metadata(true)
+                .num_threads(4)
                 .into_iter()
                 .par_bridge()
                 .filter_map(Result::ok)
-                .filter(|entry| match entry.metadata() {
-                    Ok(ref metadata) => filter_file_metadata(metadata),
-                    Err(_) => false,
+                .filter(|entry| match entry.metadata {
+                    Some(Ok(ref metadata)) => filter_file_metadata(metadata),
+                    _ => false,
                 })
-                .map(|entry| entry.into_path())
+                .map(|entry| entry.path())
         })
         .map_init(FileCarver::new, |file_carver, path| {
             if let Ok(mut file) = File::open(&path) {
