@@ -14,6 +14,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::path::PathBuf;
+use std::sync::mpsc;
 use walkdir::WalkDir;
 use zip::read::read_zipfile_from_stream;
 
@@ -504,8 +505,15 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
     crtsh: &C,
     log_comms: &L,
 ) {
-    let mut pool = CertificatePool::new();
-    let matches: Vec<MatchCert> = paths
+    let (sender, receiver): (mpsc::Sender<MatchCert>, mpsc::Receiver<MatchCert>) = mpsc::channel();
+    let thread = std::thread::spawn(move || {
+        let mut pool = CertificatePool::new();
+        for match_cert in receiver {
+            pool.add_cert(match_cert.cert, match_cert.path);
+        }
+        pool
+    });
+    paths
         .par_bridge()
         .flat_map(|path| {
             WalkDir::new(path)
@@ -536,10 +544,10 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
             },
         )
         .filter(|match_cert| match_cert.cert.looks_like_ca() || match_cert.cert.looks_like_server())
-        .collect();
-    for match_cert in matches.into_iter() {
-        pool.add_cert(match_cert.cert, match_cert.path);
-    }
+        .for_each_with(sender, |sender, match_cert| {
+            sender.send(match_cert).unwrap()
+        });
+    let mut pool = thread.join().unwrap();
 
     let mut all_roots_vec = Vec::new();
     for log in logs.iter_mut() {
