@@ -5,6 +5,7 @@ pub mod ldapprep;
 pub mod mocks;
 pub mod x509;
 
+use json;
 use jwalk::WalkDir;
 use lazy_static::lazy_static;
 use rayon::iter::{ParallelBridge, ParallelIterator};
@@ -97,34 +98,44 @@ impl CertificateRecord {
 }
 
 #[derive(Debug)]
-pub enum APIError {
+pub enum ApiError {
     Network(reqwest::Error),
     Status(reqwest::StatusCode),
+    Json(json::Error),
+    InvalidResponse(&'static str),
 }
 
-impl Display for APIError {
+impl Display for ApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         match self {
-            APIError::Network(err) => Display::fmt(err, f),
-            APIError::Status(code) => match code.canonical_reason() {
+            ApiError::Network(err) => Display::fmt(err, f),
+            ApiError::Status(code) => match code.canonical_reason() {
                 Some(reason) => write!(f, "{} {}", code.as_u16(), reason),
                 None => write!(f, "{}", code.as_u16()),
             },
+            ApiError::Json(err) => Display::fmt(err, f),
+            ApiError::InvalidResponse(details) => write!(f, "Invalid response, {}", details),
         }
     }
 }
 
-impl std::error::Error for APIError {}
+impl std::error::Error for ApiError {}
 
-impl From<reqwest::Error> for APIError {
-    fn from(e: reqwest::Error) -> APIError {
-        APIError::Network(e)
+impl From<reqwest::Error> for ApiError {
+    fn from(e: reqwest::Error) -> ApiError {
+        ApiError::Network(e)
     }
 }
 
-impl From<reqwest::StatusCode> for APIError {
-    fn from(e: reqwest::StatusCode) -> APIError {
-        APIError::Status(e)
+impl From<reqwest::StatusCode> for ApiError {
+    fn from(e: reqwest::StatusCode) -> ApiError {
+        ApiError::Status(e)
+    }
+}
+
+impl From<json::Error> for ApiError {
+    fn from(e: json::Error) -> ApiError {
+        ApiError::Json(e)
     }
 }
 
@@ -615,7 +626,7 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
         let mut any_chain = false;
         let mut any_submission_success = false;
         let mut all_submission_errors = true;
-        let mut last_submission_error: Option<APIError> = None;
+        let mut last_submission_error: Option<ApiError> = None;
         for log in logs.iter() {
             if log.trust_roots.test_fingerprint(&cert.fingerprint()) {
                 // skip root CAs
@@ -645,7 +656,7 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
                         // only submit one chain
                         break;
                     }
-                    Err(APIError::Status(status)) => {
+                    Err(ApiError::Status(status)) => {
                         all_submission_errors = false; // don't want to panic on this
 
                         println!(
@@ -702,5 +713,4 @@ mod tests {
         let certs = file_carver.carve_stream(&mut stream);
         assert!(certs.is_empty());
     }
-
 }
