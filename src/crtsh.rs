@@ -46,7 +46,7 @@ pub struct CachedCrtShServer<T: CrtShServer> {
 
 impl<T: CrtShServer> CachedCrtShServer<T> {
     pub fn new(inner: T, path: &Path) -> sled::Result<CachedCrtShServer<T>> {
-        let tree = Db::start_default(path)?;
+        let tree = Db::open(path)?;
         Ok(CachedCrtShServer { inner, tree })
     }
 
@@ -64,7 +64,7 @@ impl<T: CrtShServer> CrtShServer for CachedCrtShServer<T> {
         }
         let in_crtsh = self.inner.check_crtsh(fp)?;
         if in_crtsh {
-            let sled_result = self.tree.set(fp.as_ref(), Vec::new());
+            let sled_result = self.tree.insert(fp.as_ref(), Vec::new());
             if sled_result.is_err() {
                 println!("Warning: Couldn't write to cache file");
             }
