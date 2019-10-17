@@ -51,8 +51,8 @@ impl<T: CrtShServer> CachedCrtShServer<T> {
     }
 
     pub fn new_temporary(inner: T) -> sled::Result<CachedCrtShServer<T>> {
-        let config = sled::ConfigBuilder::default().temporary(true).build();
-        let tree = Db::start(config)?;
+        let config = sled::Config::default().temporary(true);
+        let tree = config.open()?;
         Ok(CachedCrtShServer { inner, tree })
     }
 }
