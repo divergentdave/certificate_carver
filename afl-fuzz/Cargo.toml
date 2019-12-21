@@ -1,0 +1,11 @@
+[package]
+name = "certificate_carver-afl"
+version = "0.1.0"
+authors = ["David Cook <divergentdave@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+afl = "0.4.3"
+certificate_carver = { path = ".." }

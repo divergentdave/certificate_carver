@@ -5,10 +5,10 @@ use std::sync::Mutex;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
-use crate::{APIError, CertificateFingerprint};
+use crate::{ApiError, CertificateFingerprint};
 
 pub trait CrtShServer {
-    fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, APIError>;
+    fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, ApiError>;
 }
 
 pub struct RealCrtShServer<'a> {
@@ -24,12 +24,12 @@ impl<'a> RealCrtShServer<'a> {
 impl CrtShServer for RealCrtShServer<'_> {
     // true: certificate has already been indexed
     // false: certificate has not been indexed
-    fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, APIError> {
+    fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, ApiError> {
         let url_str = format!("https://crt.sh/?q={}", fp);
         let url = Url::parse(&url_str).unwrap();
         let mut resp = self.client.get(url).send()?;
         if !resp.status().is_success() {
-            return Err(APIError::Status(resp.status()));
+            return Err(ApiError::Status(resp.status()));
         }
         let body = resp.text()?;
         match body.find("Certificate not found") {
@@ -46,7 +46,7 @@ pub struct CachedCrtShServer<T: CrtShServer> {
 
 impl<T: CrtShServer> CachedCrtShServer<T> {
     pub fn new(inner: T, path: &Path) -> sled::Result<CachedCrtShServer<T>> {
-        let tree = Db::start_default(path)?;
+        let tree = Db::open(path)?;
         Ok(CachedCrtShServer { inner, tree })
     }
 
@@ -58,13 +58,13 @@ impl<T: CrtShServer> CachedCrtShServer<T> {
 }
 
 impl<T: CrtShServer> CrtShServer for CachedCrtShServer<T> {
-    fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, APIError> {
+    fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, ApiError> {
         if let Ok(Some(_)) = self.tree.get(fp.as_ref()) {
             return Ok(true);
         }
         let in_crtsh = self.inner.check_crtsh(fp)?;
         if in_crtsh {
-            let sled_result = self.tree.set(fp.as_ref(), Vec::new());
+            let sled_result = self.tree.insert(fp.as_ref(), Vec::new());
             if sled_result.is_err() {
                 println!("Warning: Couldn't write to cache file");
             }
@@ -97,7 +97,7 @@ impl<T: CrtShServer> RetryDelayCrtShServer<T> {
 }
 
 impl<T: CrtShServer> CrtShServer for RetryDelayCrtShServer<T> {
-    fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, APIError> {
+    fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, ApiError> {
         let mut guard = self.state.lock().unwrap();
         let mut error_count = 0;
         loop {

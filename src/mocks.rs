@@ -3,7 +3,7 @@ use std::cell::RefCell;
 
 use crate::crtsh::CrtShServer;
 use crate::ctlog::{AddChainResponse, LogInfo, LogServers};
-use crate::{APIError, CertificateChain, CertificateFingerprint};
+use crate::{ApiError, CertificateChain, CertificateFingerprint};
 
 pub struct MockCrtShServer {
     response: bool,
@@ -27,7 +27,7 @@ impl Default for MockCrtShServer {
 }
 
 impl CrtShServer for MockCrtShServer {
-    fn check_crtsh(&self, _fp: &CertificateFingerprint) -> Result<bool, APIError> {
+    fn check_crtsh(&self, _fp: &CertificateFingerprint) -> Result<bool, ApiError> {
         Ok(self.response)
     }
 }
@@ -51,8 +51,8 @@ impl LogServers for MockLogServers {
         &self,
         log: &LogInfo,
         chain: &CertificateChain,
-    ) -> Result<AddChainResponse, APIError> {
-        let resp: AddChainResponse = serde_json::from_str(
+    ) -> Result<AddChainResponse, ApiError> {
+        let resp = AddChainResponse::parse(
             "{\"sct_version\":0,\"id\":\"pLkJkLQYWBSHuxOizGdwCjw1mAT5G9+443fNDsgN3BA=\",\"timestamp\":1519606625707,\"extensions\":\"\",\"signature\":\"BAMARzBFAiEAmqLo0/5CaAgNZdpsBgDKFAwKgQ4g2fLfMTUe8LLEYVQCIDhUD2coHB7IOV844lDSpm5Tmfh7FGaWtCFOZnSxGYiK\"}"
         ).unwrap();
         let mut storage = self.submitted_chains.borrow_mut();

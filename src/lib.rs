@@ -6,7 +6,8 @@ pub mod mocks;
 pub mod pdfsig;
 pub mod x509;
 
-use copy_in_place::copy_in_place;
+use json;
+use jwalk::WalkDir;
 use lazy_static::lazy_static;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use regex::bytes::{CaptureLocations, Regex};
@@ -16,7 +17,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::path::PathBuf;
-use walkdir::WalkDir;
+use std::sync::mpsc;
 use zip::read::read_zipfile_from_stream;
 
 #[cfg(unix)]
@@ -99,34 +100,44 @@ impl CertificateRecord {
 }
 
 #[derive(Debug)]
-pub enum APIError {
+pub enum ApiError {
     Network(reqwest::Error),
     Status(reqwest::StatusCode),
+    Json(json::Error),
+    InvalidResponse(&'static str),
 }
 
-impl Display for APIError {
+impl Display for ApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         match self {
-            APIError::Network(err) => Display::fmt(err, f),
-            APIError::Status(code) => match code.canonical_reason() {
+            ApiError::Network(err) => Display::fmt(err, f),
+            ApiError::Status(code) => match code.canonical_reason() {
                 Some(reason) => write!(f, "{} {}", code.as_u16(), reason),
                 None => write!(f, "{}", code.as_u16()),
             },
+            ApiError::Json(err) => Display::fmt(err, f),
+            ApiError::InvalidResponse(details) => write!(f, "Invalid response, {}", details),
         }
     }
 }
 
-impl std::error::Error for APIError {}
+impl std::error::Error for ApiError {}
 
-impl From<reqwest::Error> for APIError {
-    fn from(e: reqwest::Error) -> APIError {
-        APIError::Network(e)
+impl From<reqwest::Error> for ApiError {
+    fn from(e: reqwest::Error) -> ApiError {
+        ApiError::Network(e)
     }
 }
 
-impl From<reqwest::StatusCode> for APIError {
-    fn from(e: reqwest::StatusCode) -> APIError {
-        APIError::Status(e)
+impl From<reqwest::StatusCode> for ApiError {
+    fn from(e: reqwest::StatusCode) -> ApiError {
+        ApiError::Status(e)
+    }
+}
+
+impl From<json::Error> for ApiError {
+    fn from(e: json::Error) -> ApiError {
+        ApiError::Json(e)
     }
 }
 
@@ -155,7 +166,7 @@ impl<R: Read> BufReaderOverlap<R> {
         let mut eof = false;
         if remaining <= min_size {
             if self.pos > 0 {
-                copy_in_place(&mut self.buf, self.pos..self.cap, 0);
+                self.buf.copy_within(self.pos..self.cap, 0);
                 self.cap = remaining;
                 self.pos = 0;
             }
@@ -528,19 +539,28 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
     crtsh: &C,
     log_comms: &L,
 ) {
-    let mut pool = CertificatePool::new();
-    let matches: Vec<MatchCert> = paths
+    let (sender, receiver): (mpsc::Sender<MatchCert>, mpsc::Receiver<MatchCert>) = mpsc::channel();
+    let thread = std::thread::spawn(move || {
+        let mut pool = CertificatePool::new();
+        for match_cert in receiver {
+            pool.add_cert(match_cert.cert, match_cert.path);
+        }
+        pool
+    });
+    paths
         .par_bridge()
         .flat_map(|path| {
             WalkDir::new(path)
+                .preload_metadata(true)
+                .num_threads(4)
                 .into_iter()
                 .par_bridge()
                 .filter_map(Result::ok)
-                .filter(|entry| match entry.metadata() {
-                    Ok(ref metadata) => filter_file_metadata(metadata),
-                    Err(_) => false,
+                .filter(|entry| match entry.metadata {
+                    Some(Ok(ref metadata)) => filter_file_metadata(metadata),
+                    _ => false,
                 })
-                .map(|entry| entry.into_path())
+                .map(|entry| entry.path())
         })
         .map_init(FileCarver::new, |file_carver, path| {
             if let Ok(mut file) = File::open(&path) {
@@ -560,10 +580,10 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
             },
         )
         .filter(|match_cert| match_cert.cert.looks_like_ca() || match_cert.cert.looks_like_server())
-        .collect();
-    for match_cert in matches.into_iter() {
-        pool.add_cert(match_cert.cert, match_cert.path);
-    }
+        .for_each_with(sender, |sender, match_cert| {
+            sender.send(match_cert).unwrap()
+        });
+    let mut pool = thread.join().unwrap();
 
     let mut all_roots_vec = Vec::new();
     for log in logs.iter_mut() {
@@ -629,7 +649,7 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
         let mut any_chain = false;
         let mut any_submission_success = false;
         let mut all_submission_errors = true;
-        let mut last_submission_error: Option<APIError> = None;
+        let mut last_submission_error: Option<ApiError> = None;
         for log in logs.iter() {
             if log.trust_roots.test_fingerprint(&cert.fingerprint()) {
                 // skip root CAs
@@ -659,7 +679,7 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
                         // only submit one chain
                         break;
                     }
-                    Err(APIError::Status(status)) => {
+                    Err(ApiError::Status(status)) => {
                         all_submission_errors = false; // don't want to panic on this
 
                         println!(
@@ -716,5 +736,4 @@ mod tests {
         let certs = file_carver.carve_stream(&mut stream);
         assert!(certs.is_empty());
     }
-
 }

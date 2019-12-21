@@ -1,5 +1,6 @@
 dist: trusty
 language: rust
+rust: 1.37.0
 sudo: required
 
 env:
@@ -36,7 +37,7 @@ before_install:
   - if [ "$TARGET" = "i686-unknown-linux-gnu" ]; then rustup target add $TARGET; fi
   - rustup self update
 
-  - export SCCACHE_VER=0.2.9 RUSTC_WRAPPER=sccache
+  - export SCCACHE_VER=0.2.11 RUSTC_WRAPPER=sccache
   - case "$TRAVIS_OS_NAME" in
       linux )
         (cd /tmp
