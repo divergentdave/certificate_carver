@@ -14,8 +14,8 @@ path = ".."
 git = "https://github.com/rust-fuzz/libfuzzer-sys.git"
 
 [patch.crates-io]
-pdf = { git = "https://github.com/pdf-rs/pdf", rev = "429eb313d735dc18f6c07859827b011d4b2a45bd" }
-pdf_derive = { git = "https://github.com/pdf-rs/pdf", rev = "429eb313d735dc18f6c07859827b011d4b2a45bd" }
+pdf = { git = "https://github.com/pdf-rs/pdf", rev = "72545440f6bd9aa76c7a7afd84de5969c5d213b2" }
+pdf_derive = { git = "https://github.com/pdf-rs/pdf", rev = "72545440f6bd9aa76c7a7afd84de5969c5d213b2" }
 
 # Prevent this from interfering with workspaces
 [workspace]
