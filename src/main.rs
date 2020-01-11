@@ -200,20 +200,6 @@ fn make_log_list() -> Vec<LogInfo> {
     ]
 }
 
-fn make_reqwest_client() -> reqwest::Client {
-    let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert(
-        reqwest::header::USER_AGENT,
-        reqwest::header::HeaderValue::from_static(
-            "certificate_carver (https://github.com/divergentdave/certificate_carver)",
-        ),
-    );
-    reqwest::Client::builder()
-        .default_headers(headers)
-        .build()
-        .unwrap()
-}
-
 fn main() {
     let matches = App::new("Certificate Carver")
         .version("0.1.7-alpha")
@@ -236,7 +222,7 @@ fn main() {
         .unwrap()
         .map(|osstr: &OsStr| -> PathBuf { From::from(osstr) });
 
-    let client = make_reqwest_client();
+    let client = surf::Client::new();
 
     let crtsh = RealCrtShServer::new(&client);
     let crtsh = RetryDelayCrtShServer::new(crtsh, Duration::new(5, 0));

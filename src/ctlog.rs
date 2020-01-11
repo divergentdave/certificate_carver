@@ -2,11 +2,12 @@ use crate::{
     pem_base64_decode, pem_base64_encode, ApiError, Certificate, CertificateBytes,
     CertificateChain, CertificateFingerprint,
 };
+use async_std::task::block_on;
 use chrono::{Datelike, Utc};
 use json::{self, JsonValue};
 use lazy_static::lazy_static;
-use reqwest::Url;
 use std::collections::HashSet;
+use surf::url::Url;
 
 pub struct GetRootsResponse {
     certificates: Vec<String>,
@@ -159,17 +160,17 @@ pub trait LogServers {
     ) -> Result<AddChainResponse, ApiError>;
 }
 
-pub struct RealLogServers<'a> {
-    client: &'a reqwest::Client,
+pub struct RealLogServers<'a, C: surf::middleware::HttpClient> {
+    client: &'a surf::Client<C>,
 }
 
-impl<'a> RealLogServers<'a> {
-    pub fn new(client: &'a reqwest::Client) -> RealLogServers<'a> {
+impl<'a, C: surf::middleware::HttpClient> RealLogServers<'a, C> {
+    pub fn new(client: &'a surf::Client<C>) -> RealLogServers<'a, C> {
         RealLogServers { client }
     }
 }
 
-impl LogServers for RealLogServers<'_> {
+impl<C: surf::middleware::HttpClient> LogServers for RealLogServers<'_, C> {
     fn submit_chain(
         &self,
         log: &LogInfo,
@@ -182,16 +183,17 @@ impl LogServers for RealLogServers<'_> {
             .map(|c| pem_base64_encode(c.as_ref()))
             .collect();
         let request_body = AddChainRequest { chain: encoded };
-        let mut response = self
-            .client
-            .post(url)
-            .header("Content-Type", "application/json")
-            .body(request_body.dump())
-            .send()?;
+        let mut response = block_on(
+            self.client
+                .post(url)
+                .set_header("Content-Type", "application/json")
+                .body_bytes(request_body.dump())
+                .middleware(crate::add_user_agent_header),
+        )?;
         if !response.status().is_success() {
             return Err(ApiError::Status(response.status()));
         }
-        let response_body = AddChainResponse::parse(&response.text()?)?;
+        let response_body = AddChainResponse::parse(&block_on(response.body_string())?)?;
         Ok(response_body)
     }
 }

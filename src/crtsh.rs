@@ -1,9 +1,10 @@
-use reqwest::Url;
+use async_std::task::block_on;
 use sled::{self, Db};
 use std::path::Path;
 use std::sync::Mutex;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
+use surf::url::Url;
 
 use crate::{ApiError, CertificateFingerprint};
 
@@ -11,27 +12,31 @@ pub trait CrtShServer {
     fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, ApiError>;
 }
 
-pub struct RealCrtShServer<'a> {
-    client: &'a reqwest::Client,
+pub struct RealCrtShServer<'a, C: surf::middleware::HttpClient> {
+    client: &'a surf::Client<C>,
 }
 
-impl<'a> RealCrtShServer<'a> {
-    pub fn new(client: &'a reqwest::Client) -> RealCrtShServer<'a> {
+impl<'a, C: surf::middleware::HttpClient> RealCrtShServer<'a, C> {
+    pub fn new(client: &'a surf::Client<C>) -> RealCrtShServer<'a, C> {
         RealCrtShServer { client }
     }
 }
 
-impl CrtShServer for RealCrtShServer<'_> {
+impl<C: surf::middleware::HttpClient> CrtShServer for RealCrtShServer<'_, C> {
     // true: certificate has already been indexed
     // false: certificate has not been indexed
     fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, ApiError> {
         let url_str = format!("https://crt.sh/?q={}", fp);
         let url = Url::parse(&url_str).unwrap();
-        let mut resp = self.client.get(url).send()?;
+        let mut resp = block_on(
+            self.client
+                .get(url)
+                .middleware(crate::add_user_agent_header),
+        )?;
         if !resp.status().is_success() {
             return Err(ApiError::Status(resp.status()));
         }
-        let body = resp.text()?;
+        let body = block_on(resp.body_string())?;
         match body.find("Certificate not found") {
             None => Ok(true),
             Some(_) => Ok(false),
