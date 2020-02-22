@@ -1,1 +1,1 @@
-This directory contains an afl-rs fuzzing harness. To run the fuzzer, change to the afl-fuzz subdirectory, build the binary with `RUSTFLAGS="-Clink-arg=-fuse-ld=gold" cargo afl build`, and run the fuzzer with `cargo afl fuzz -i in -o out target/debug/certificate_carver-afl`.
+This directory contains an afl-rs fuzzing harness. To run the fuzzer, change to the afl-fuzz subdirectory, build the binary with `cargo afl build`, and run the fuzzer with `cargo afl fuzz -i in -o out target/debug/certificate_carver-afl`.
