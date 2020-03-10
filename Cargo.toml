@@ -8,7 +8,7 @@ default-run = "certificate_carver"
 [dependencies]
 async-std = "1.5.0"
 base64 = "0.11"
-chrono = "0.4.10"
+chrono = "0.4.11"
 clap = "2.33.0"
 encoding = "0.2"
 futures = "0.3.4"
