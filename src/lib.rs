@@ -17,7 +17,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::path::PathBuf;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 use zip::read::read_zipfile_from_stream;
 
 #[cfg(unix)]
@@ -533,17 +533,22 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
         }
         pool
     });
+    let threadpool = Arc::new(
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(4)
+            .build()
+            .unwrap(),
+    );
     paths
         .par_bridge()
         .flat_map(|path| {
             WalkDir::new(path)
-                .preload_metadata(true)
-                .num_threads(4)
+                .parallelism(jwalk::Parallelism::RayonExistingPool(threadpool.clone()))
                 .into_iter()
                 .par_bridge()
                 .filter_map(Result::ok)
-                .filter(|entry| match entry.metadata {
-                    Some(Ok(ref metadata)) => filter_file_metadata(metadata),
+                .filter(|entry| match entry.metadata() {
+                    Ok(ref metadata) => filter_file_metadata(metadata),
                     _ => false,
                 })
                 .map(|entry| entry.path())
