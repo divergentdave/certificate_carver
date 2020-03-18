@@ -183,7 +183,7 @@ dependencies = [
  "encoding 0.2.33 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.3.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "json 0.12.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "json 0.12.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "jwalk 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rayon 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -736,7 +736,7 @@ dependencies = [
 
 [[package]]
 name = "json"
-version = "0.12.2"
+version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -1660,7 +1660,7 @@ dependencies = [
 "checksum isahc 0.7.6 (registry+https://github.com/rust-lang/crates.io-index)" = "17b77027f12e53ae59a379f7074259d32eb10867e6183388020e922832d9c3fb"
 "checksum itoa 0.4.4 (registry+https://github.com/rust-lang/crates.io-index)" = "501266b7edd0174f8530248f87f99c88fbe60ca4ef3dd486835b8d8d53136f7f"
 "checksum js-sys 0.3.35 (registry+https://github.com/rust-lang/crates.io-index)" = "7889c7c36282151f6bf465be4700359318aef36baa951462382eae49e9577cf9"
-"checksum json 0.12.2 (registry+https://github.com/rust-lang/crates.io-index)" = "53cbc99268c271e1b373440fb5e59cd231c86805d4923c144697898d827edc61"
+"checksum json 0.12.4 (registry+https://github.com/rust-lang/crates.io-index)" = "078e285eafdfb6c4b434e0d31e8cfcb5115b651496faca5749b88fafd4f23bfd"
 "checksum jwalk 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "88746778a47f54f83bc0d3d8ba40ce83808024405356b4d521c2bf93c1273cd4"
 "checksum kernel32-sys 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "7507624b29483431c0ba2d82aece8ca6cdba9382bff4ddd0f7490560c056098d"
 "checksum kv-log-macro 1.0.4 (registry+https://github.com/rust-lang/crates.io-index)" = "8c54d9f465d530a752e6ebdc217e081a7a614b48cb200f6f0aee21ba6bc9aabb"
