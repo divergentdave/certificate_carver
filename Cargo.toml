@@ -22,7 +22,7 @@ sled = "0.28.0"
 stringprep = "0.1.2"
 surf = "1.0.3"
 unicode-normalization = "0.1"
-untrusted = "0.7.0"
+untrusted = "0.7.1"
 zip = "0.5"
 
 [dependencies.regex]
