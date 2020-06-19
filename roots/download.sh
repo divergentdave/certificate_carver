@@ -7,4 +7,3 @@ curl https://mammoth.ct.comodo.com/ct/v1/get-roots > mammoth-sabre.json
 curl https://nessie2018.ct.digicert.com/log/ct/v1/get-roots > nessie-yeti.json
 curl https://ct.cloudflare.com/logs/nimbus2017/ct/v1/get-roots > nimbus.json
 curl https://ct.googleapis.com/pilot/ct/v1/get-roots > pilot-daedalus.json
-curl https://plausible.ct.nordu.net/ct/v1/get-roots > plausible.json

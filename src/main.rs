@@ -14,7 +14,6 @@ const ICARUS_ROOTS: &str = include_str!("../roots/icarus.json");
 const DIGICERT_CT1_ROOTS: &str = include_str!("../roots/digicert-ct1.json");
 const DODO_ROOTS: &str = include_str!("../roots/dodo.json");
 const MAMMOTH_SABRE_ROOTS: &str = include_str!("../roots/mammoth-sabre.json");
-const PLAUSIBLE_ROOTS: &str = include_str!("../roots/plausible.json");
 const ARGON_XENON_ROOTS: &str = include_str!("../roots/argon-xenon.json");
 const NIMBUS_ROOTS: &str = include_str!("../roots/nimbus.json");
 const NESSIE_YETI_ROOTS: &str = include_str!("../roots/nessie-yeti.json");
@@ -51,11 +50,6 @@ fn make_log_list() -> Vec<LogInfo> {
             "https://mammoth.ct.comodo.com/",
             LogShard::Any,
             MAMMOTH_SABRE_ROOTS,
-        ),
-        LogInfo::new(
-            "https://plausible.ct.nordu.net/",
-            LogShard::Any,
-            PLAUSIBLE_ROOTS,
         ),
         LogInfo::new(
             "https://ct.googleapis.com/logs/argon2017/",
