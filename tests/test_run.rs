@@ -8,11 +8,11 @@ use certificate_carver::run;
 
 #[test]
 fn test_run() {
-    let log_url_str = "https://ct.googleapis.com/pilot/";
+    let log_url_str = "https://ct.googleapis.com/logs/argon2018/";
     let logs = vec![LogInfo::new(
         log_url_str,
-        LogShard::Any,
-        include_str!("../roots/pilot-daedalus.json"),
+        LogShard::ExpiryYear(2018),
+        include_str!("../roots/argon-xenon.json"),
     )];
     let mut args = Vec::new();
     args.push(PathBuf::from(format!(
@@ -35,7 +35,7 @@ fn test_run() {
         )
     });
 
-    assert_eq!(chains.len(), 2);
+    assert_eq!(chains.len(), 1);
 
     let davidsherenowitsa_party_fp = [
         0x9C, 0x1E, 0xE5, 0x12, 0x8A, 0x1E, 0xDF, 0x87, 0xD7, 0x4F, 0x4D, 0x5E, 0x5C, 0x0D, 0x90,
@@ -48,27 +48,15 @@ fn test_run() {
         0x21, 0x8D,
     ];
 
-    let first_chain = &chains[0].1;
-    assert_eq!(first_chain.0.len(), 1);
-    let first_chain_only_cert = &first_chain.0[0];
-    let first_chain_only_cert_fp = Sha256::digest(&first_chain_only_cert.0);
+    let chain = &chains[0].1;
+    assert_eq!(chain.0.len(), 2);
+    let chain_first_cert = &chain.0[0];
+    let chain_second_cert = &chain.0[1];
+    let chain_first_cert_fp = Sha256::digest(&chain_first_cert.0);
+    let chain_second_cert_fp = Sha256::digest(&chain_second_cert.0);
+    assert_eq!(chain_first_cert_fp.as_slice(), &davidsherenowitsa_party_fp);
     assert_eq!(
-        first_chain_only_cert_fp.as_slice(),
-        &lets_encrypt_authority_x3_fp
-    );
-
-    let second_chain = &chains[1].1;
-    assert_eq!(second_chain.0.len(), 2);
-    let second_chain_first_cert = &second_chain.0[0];
-    let second_chain_second_cert = &second_chain.0[1];
-    let second_chain_first_cert_fp = Sha256::digest(&second_chain_first_cert.0);
-    let second_chain_second_cert_fp = Sha256::digest(&second_chain_second_cert.0);
-    assert_eq!(
-        second_chain_first_cert_fp.as_slice(),
-        &davidsherenowitsa_party_fp
-    );
-    assert_eq!(
-        second_chain_second_cert_fp.as_slice(),
+        chain_second_cert_fp.as_slice(),
         &lets_encrypt_authority_x3_fp
     );
 }
