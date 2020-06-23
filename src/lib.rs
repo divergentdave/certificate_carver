@@ -5,7 +5,7 @@ pub mod ldapprep;
 pub mod mocks;
 pub mod x509;
 
-use futures::future::BoxFuture;
+use futures_core::future::BoxFuture;
 use json;
 use jwalk::WalkDir;
 use lazy_static::lazy_static;
