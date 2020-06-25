@@ -1,5 +1,5 @@
 use async_std::task::block_on;
-use sled::{self, Db};
+use sled::Db;
 use std::path::Path;
 use std::sync::Mutex;
 use std::thread::sleep;
@@ -51,13 +51,13 @@ pub struct CachedCrtShServer<T: CrtShServer> {
 
 impl<T: CrtShServer> CachedCrtShServer<T> {
     pub fn new(inner: T, path: &Path) -> sled::Result<CachedCrtShServer<T>> {
-        let tree = Db::open(path)?;
+        let tree = sled::open(path)?;
         Ok(CachedCrtShServer { inner, tree })
     }
 
     pub fn new_temporary(inner: T) -> sled::Result<CachedCrtShServer<T>> {
-        let config = sled::ConfigBuilder::default().temporary(true).build();
-        let tree = Db::start(config)?;
+        let config = sled::Config::default().temporary(true);
+        let tree = config.open()?;
         Ok(CachedCrtShServer { inner, tree })
     }
 }
