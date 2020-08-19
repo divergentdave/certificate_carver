@@ -1,6 +1,5 @@
 use async_std::task::block_on;
-use sled::Db;
-use std::path::Path;
+use sled::{Db, Tree};
 use std::sync::Mutex;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
@@ -46,18 +45,21 @@ impl<C: surf::middleware::HttpClient> CrtShServer for RealCrtShServer<'_, C> {
 
 pub struct CachedCrtShServer<T: CrtShServer> {
     inner: T,
-    tree: Db,
+    tree: Tree,
 }
 
 impl<T: CrtShServer> CachedCrtShServer<T> {
-    pub fn new(inner: T, path: &Path) -> sled::Result<CachedCrtShServer<T>> {
-        let tree = sled::open(path)?;
+    const TREE_NAME: &'static str = "crtsh-cache";
+
+    pub fn new(inner: T, db: Db) -> sled::Result<CachedCrtShServer<T>> {
+        let tree = db.open_tree(Self::TREE_NAME)?;
         Ok(CachedCrtShServer { inner, tree })
     }
 
     pub fn new_temporary(inner: T) -> sled::Result<CachedCrtShServer<T>> {
         let config = sled::Config::default().temporary(true);
-        let tree = config.open()?;
+        let db = config.open()?;
+        let tree = db.open_tree(Self::TREE_NAME)?;
         Ok(CachedCrtShServer { inner, tree })
     }
 }
