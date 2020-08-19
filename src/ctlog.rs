@@ -123,7 +123,7 @@ impl LogInfo {
     }
 
     fn parse_roots(&mut self, json_str: &str) {
-        let body = GetRootsResponse::parse(json_str).unwrap();
+        let body = GetRootsResponse::parse(json_str).expect("Error parsing bundled log roots");
         let mut vec = Vec::new();
         for encoded in body.certificates {
             let bytes = CertificateBytes(pem_base64_decode(&encoded).unwrap());
