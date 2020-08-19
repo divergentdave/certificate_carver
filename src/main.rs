@@ -221,7 +221,8 @@ fn main() {
     let crtsh = RealCrtShServer::new(&client);
     let crtsh = RetryDelayCrtShServer::new(crtsh, Duration::new(5, 0));
     let cache_dir = Path::new("certificate_carver_cache");
-    let crtsh = CachedCrtShServer::new(crtsh, cache_dir).expect("Couldn't create or open cache");
+    let db = sled::open(cache_dir).expect("Couldn't create or open cache");
+    let crtsh = CachedCrtShServer::new(crtsh, db).expect("Couldn't open cache");
 
     let log_comms = RealLogServers::new(&client);
 
