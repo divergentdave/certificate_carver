@@ -6,7 +6,6 @@ pub mod mocks;
 pub mod x509;
 
 use futures_core::future::BoxFuture;
-use json;
 use jwalk::WalkDir;
 use lazy_static::lazy_static;
 use rayon::iter::{ParallelBridge, ParallelIterator};

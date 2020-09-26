@@ -4,7 +4,6 @@ use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
-use untrusted;
 
 use crate::{CertificateBytes, CertificateFingerprint};
 
