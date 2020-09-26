@@ -335,7 +335,7 @@ impl FileCarver {
 
         const MAX_CERTIFICATE_SIZE: usize = 16 * 1024;
         const BUFFER_SIZE: usize = 32 * 1024;
-        const OVERLAP: usize = 27; // enough to capture the PEM header (and the DER prefix)
+        const OVERLAP: usize = 40; // enough to capture a XAdES opening tag (or PEM header or DER prefix)
         let mut stream = BufReaderOverlap::with_capacity(BUFFER_SIZE, stream);
         let mut min_size = OVERLAP;
         loop {
