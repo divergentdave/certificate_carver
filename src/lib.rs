@@ -779,11 +779,11 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
     );
 }
 
-fn add_user_agent_header<'a, C: surf::middleware::HttpClient>(
+fn add_user_agent_header<C: surf::middleware::HttpClient>(
     mut req: surf::middleware::Request,
     client: C,
-    next: surf::middleware::Next<'a, C>,
-) -> BoxFuture<'a, Result<surf::middleware::Response, surf::Exception>> {
+    next: surf::middleware::Next<'_, C>,
+) -> BoxFuture<'_, Result<surf::middleware::Response, surf::Exception>> {
     Box::pin(async move {
         req.headers_mut().insert(
             surf::http::header::USER_AGENT,
