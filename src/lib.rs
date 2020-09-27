@@ -9,6 +9,7 @@ use futures_core::future::BoxFuture;
 use jwalk::WalkDir;
 use lazy_static::lazy_static;
 use log::{error, info, trace};
+use memmem::{Searcher, TwoWaySearcher};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use regex::bytes::{CaptureLocations, Regex};
 use std::collections::{HashMap, HashSet};
@@ -295,7 +296,7 @@ lazy_static! {
         (-----BEGIN CERTIFICATE-----)|\
         (<(?:[A-Z_a-z][A-Z_a-z-.0-9]*:)?(?:X509Certificate|EncapsulatedTimeStamp|CertifiedRole|EncapsulatedX509Certificate|EncapsulatedCRLValue|EncapsulatedOCSPValue)[> ])"
     ).unwrap();
-    static ref PEM_END_RE: Regex = Regex::new("-----END CERTIFICATE-----").unwrap();
+    static ref PEM_END_SEARCHER: TwoWaySearcher<'static> = TwoWaySearcher::new(b"-----END CERTIFICATE-----");
     static ref XMLDSIG_END_RE: Regex = Regex::new(
         "</(?:[A-Z_a-z][A-Z_a-z-.0-9]*:)?(?:X509Certificate|EncapsulatedTimeStamp|CertifiedRole|EncapsulatedX509Certificate|EncapsulatedCRLValue|EncapsulatedOCSPValue)>"
     ).unwrap();
@@ -407,9 +408,9 @@ impl FileCarver {
                             }
                         }
                     } else if let Some((header_start, b64_start)) = self.caps.get(3) {
-                        match PEM_END_RE.find(&buf[b64_start..]) {
-                            Some(m2) => {
-                                let b64_end = b64_start + m2.start();
+                        match PEM_END_SEARCHER.search_in(&buf[b64_start..]) {
+                            Some(end_index) => {
+                                let b64_end = b64_start + end_index;
                                 let encoded = &buf[b64_start..b64_end];
                                 match pem_base64_decode(&encoded) {
                                     Ok(bytes) => results.push(Ok(CertificateBytes(bytes))),
