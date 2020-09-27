@@ -1,10 +1,10 @@
 use encoding::all::ISO_8859_1;
 use encoding::{DecoderTrap, Encoding};
+use log::{debug, error, info, warn};
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
-use untrusted;
 
 use crate::{CertificateBytes, CertificateFingerprint};
 
@@ -280,6 +280,7 @@ impl NameType {
 impl From<&[u8]> for NameType {
     fn from(type_oid: &[u8]) -> NameType {
         if type_oid.len() != 3 || type_oid[0] != 0x55 || type_oid[1] != 0x04 {
+            info!("Unrecognized name type, {:02x?}", type_oid);
             NameType::UnrecognizedType
         } else {
             match type_oid[2] {
@@ -297,7 +298,10 @@ impl From<&[u8]> for NameType {
                 0x2B => NameType::Initials,
                 0x41 => NameType::Pseudonym,
                 0x2C => NameType::GenerationQualifier,
-                _ => NameType::UnrecognizedType,
+                _ => {
+                    info!("Unrecognized name type, {:02x?}", type_oid);
+                    NameType::UnrecognizedType
+                }
             }
         }
     }
@@ -402,24 +406,38 @@ impl Hash for NameTypeValue {
 
 fn parse_directory_string(raw: &[u8]) -> Option<String> {
     let input = untrusted::Input::from(raw);
-    if let Ok((tag, inner)) = input.read_all(Error::BadDERString, |value_der| {
+    let res = input.read_all(Error::BadDERString, |value_der| {
         read_tag_and_get_value(value_der, Error::BadDERString)
-    }) {
-        let tag_usize: usize = tag as usize;
-        let slice = inner.as_slice_less_safe();
-        if tag_usize == (Tag::Utf8String as usize) || tag_usize == (Tag::PrintableString as usize) {
-            String::from_utf8(slice.to_vec()).ok()
-        } else if tag_usize == (Tag::TeletexString as usize) {
-            let mut decoded = String::new();
-            match ISO_8859_1.decode_to(slice, DecoderTrap::Replace, &mut decoded) {
-                Ok(()) => Some(decoded),
-                Err(_) => None,
+    });
+    match res {
+        Ok((tag, inner)) => {
+            let tag_usize: usize = tag as usize;
+            let slice = inner.as_slice_less_safe();
+            if tag_usize == (Tag::Utf8String as usize)
+                || tag_usize == (Tag::PrintableString as usize)
+            {
+                String::from_utf8(slice.to_vec()).ok()
+            } else if tag_usize == (Tag::TeletexString as usize) {
+                let mut decoded = String::new();
+                match ISO_8859_1.decode_to(slice, DecoderTrap::Replace, &mut decoded) {
+                    Ok(()) => Some(decoded),
+                    Err(e) => {
+                        warn!("Invalid Teletex string, {}", e);
+                        None
+                    }
+                }
+            } else {
+                debug!(
+                    "Unsupported tag type in directory string, 0x{:x}",
+                    tag_usize,
+                );
+                None
             }
-        } else {
+        }
+        Err(e) => {
+            warn!("Couldn't parse directory string, {}", e);
             None
         }
-    } else {
-        None
     }
 }
 
@@ -452,13 +470,15 @@ impl PartialEq for RelativeDistinguishedName {
 impl Hash for RelativeDistinguishedName {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.attribs.len().hash(state);
-        if self.attribs.len() == 1 {
-            self.attribs[0].hash(state);
-        } else if self.attribs.len() > 1 {
-            let mut sorted = self.attribs.clone();
-            sorted.sort();
-            for attrib in sorted.iter() {
-                attrib.hash(state);
+        match self.attribs.len() {
+            0 => {}
+            1 => self.attribs[0].hash(state),
+            _ => {
+                let mut sorted = self.attribs.clone();
+                sorted.sort();
+                for attrib in sorted.iter() {
+                    attrib.hash(state);
+                }
             }
         }
     }
@@ -473,6 +493,9 @@ pub struct NameInfo {
 impl NameInfo {
     pub fn new(bytes: Vec<u8>) -> NameInfo {
         let rdns = NameInfo::parse_rdns(&bytes);
+        if let Err(e) = &rdns {
+            warn!("Error parsing distinguished name, {}", e);
+        }
         NameInfo { bytes, rdns }
     }
 
@@ -852,8 +875,9 @@ fn parse_extensions(der: &mut untrusted::Reader) -> Result<ExtensionFlags, Error
                             }
                         },
                     );
-                    if let Ok(ca) = result {
-                        basic_constraints_ca = ca;
+                    match result {
+                        Ok(ca) => basic_constraints_ca = ca,
+                        Err(e) => error!("Error parsing basic constraints extension, {}", e),
                     }
                 } else if id == DER_OID_EXTENSION_KEY_USAGE {
                     let result = nested(
@@ -868,11 +892,14 @@ fn parse_extensions(der: &mut untrusted::Reader) -> Result<ExtensionFlags, Error
                             Ok(byte)
                         },
                     );
-                    if let Ok(byte) = result {
-                        has_ku = true;
-                        // Check if the digitalSignature(0), keyEncipherment(2),
-                        // or keyAgreement(4) bits are set
-                        ku_tls_handshake = byte & 0xA8 != 0;
+                    match result {
+                        Ok(byte) => {
+                            has_ku = true;
+                            // Check if the digitalSignature(0), keyEncipherment(2),
+                            // or keyAgreement(4) bits are set
+                            ku_tls_handshake = byte & 0xA8 != 0;
+                        }
+                        Err(e) => error!("Error parsing key usage extension, {}", e),
                     }
                 } else if id == DER_OID_EXTENSION_EXTENDED_KEY_USAGE {
                     let result = nested(
@@ -896,9 +923,12 @@ fn parse_extensions(der: &mut untrusted::Reader) -> Result<ExtensionFlags, Error
                             Ok(server_auth)
                         },
                     );
-                    if let Ok(server_auth) = result {
-                        has_eku = true;
-                        eku_server_auth = server_auth;
+                    match result {
+                        Ok(server_auth) => {
+                            has_eku = true;
+                            eku_server_auth = server_auth;
+                        }
+                        Err(e) => error!("Error parsing extended key usage extension, {}", e),
                     }
                 }
                 Ok(())

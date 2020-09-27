@@ -6,16 +6,15 @@ pub mod mocks;
 pub mod x509;
 
 use futures_core::future::BoxFuture;
-use json;
 use jwalk::WalkDir;
 use lazy_static::lazy_static;
+use log::{error, info, trace};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use regex::bytes::{CaptureLocations, Regex};
 use std::collections::{HashMap, HashSet};
-use std::convert::TryInto;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 use std::fs::File;
-use std::io::{Cursor, Read, Seek, SeekFrom};
+use std::io::{self, Cursor, Read, Seek, SeekFrom};
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc};
 use zip::read::read_zipfile_from_stream;
@@ -50,7 +49,6 @@ fn pem_base64_decode<T: ?Sized + AsRef<[u8]>>(input: &T) -> Result<Vec<u8>, base
     base64::decode_config(&stripped, pem_base64_config())
 }
 
-// should make separate types for fingerprints and cert der instead of using Vec<u8>
 #[derive(Hash, PartialOrd, Ord, PartialEq, Eq, Clone, Copy)]
 pub struct CertificateFingerprint(pub [u8; 32]);
 
@@ -100,7 +98,7 @@ impl CertificateRecord {
 
 #[derive(Debug)]
 pub enum ApiError {
-    Io(std::io::Error),
+    Io(io::Error),
     Surf(surf::Exception),
     Status(surf::http::status::StatusCode),
     Json(json::Error),
@@ -124,8 +122,8 @@ impl Display for ApiError {
 
 impl std::error::Error for ApiError {}
 
-impl From<std::io::Error> for ApiError {
-    fn from(e: std::io::Error) -> ApiError {
+impl From<io::Error> for ApiError {
+    fn from(e: io::Error) -> ApiError {
         ApiError::Io(e)
     }
 }
@@ -165,7 +163,7 @@ impl<R: Read> BufReaderOverlap<R> {
         }
     }
 
-    fn fill_buf(&mut self, min_size: usize) -> std::io::Result<(&[u8], bool)> {
+    fn fill_buf(&mut self, min_size: usize) -> io::Result<(&[u8], bool)> {
         // like BufRead::fill_buf, but reads if there is min_size or less left in the buffer,
         // not just when it is empty. Returns a buffer and a boolean to indicate end of file,
         // or an error.
@@ -303,13 +301,48 @@ lazy_static! {
     ).unwrap();
 }
 
-pub struct MatchBytes {
-    pub certbytes: CertificateBytes,
+#[derive(Debug)]
+pub enum CarveError {
+    IO(io::Error),
+    X509(x509::Error),
+    Zip(zip::result::ZipError),
+}
+
+impl fmt::Display for CarveError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CarveError::IO(e) => Display::fmt(e, f),
+            CarveError::X509(e) => Display::fmt(e, f),
+            CarveError::Zip(e) => Display::fmt(e, f),
+        }
+    }
+}
+
+impl From<io::Error> for CarveError {
+    fn from(e: io::Error) -> Self {
+        CarveError::IO(e)
+    }
+}
+
+impl From<x509::Error> for CarveError {
+    fn from(e: x509::Error) -> Self {
+        CarveError::X509(e)
+    }
+}
+
+impl From<zip::result::ZipError> for CarveError {
+    fn from(e: zip::result::ZipError) -> Self {
+        CarveError::Zip(e)
+    }
+}
+
+pub struct CarveBytesResult {
+    pub res: Result<CertificateBytes, CarveError>,
     pub path: String,
 }
 
-pub struct MatchCert {
-    pub cert: Certificate,
+struct CarveCertResult {
+    pub res: Result<Certificate, CarveError>,
     pub path: String,
 }
 
@@ -330,29 +363,35 @@ impl FileCarver {
         }
     }
 
-    pub fn carve_stream<R: Read>(&mut self, stream: &mut R) -> Vec<CertificateBytes> {
+    fn carve_stream<R: Read>(
+        &mut self,
+        stream: &mut R,
+    ) -> Vec<Result<CertificateBytes, CarveError>> {
         let mut results = Vec::new();
 
         const MAX_CERTIFICATE_SIZE: usize = 16 * 1024;
         const BUFFER_SIZE: usize = 32 * 1024;
-        const OVERLAP: usize = 40; // enough to capture a XAdES opening tag (or PEM header or DER prefix)
+        const OVERLAP: usize = 40; // enough to capture a XMLDSig opening tag (or PEM header or DER prefix)
         let mut stream = BufReaderOverlap::with_capacity(BUFFER_SIZE, stream);
         let mut min_size = OVERLAP;
         loop {
             let (buf, eof) = match stream.fill_buf(min_size) {
                 Ok((buf, eof)) => (buf, eof),
-                Err(_) => return results,
+                Err(e) => {
+                    results.push(Err(e.into()));
+                    return results;
+                }
             };
             min_size = OVERLAP;
             let consume_amount: usize = match HEADER_RE.captures_read(&mut self.caps, &buf) {
                 Some(_) => {
                     if let Some((start, _end)) = self.caps.get(1) {
-                        let (length_start, length_end) = self.caps.get(2).unwrap();
-                        let length_bytes = &buf[length_start..length_end];
-                        let length = u16::from_be_bytes(length_bytes.try_into().unwrap()) as usize;
+                        let (length_start, _length_end) = self.caps.get(2).unwrap();
+                        let length_bytes = [buf[length_start], buf[length_start + 1]];
+                        let length = u16::from_be_bytes(length_bytes) as usize;
                         let end = start + length + 4;
                         if end <= buf.len() {
-                            results.push(CertificateBytes(buf[start..end].to_vec()));
+                            results.push(Ok(CertificateBytes(buf[start..end].to_vec())));
                             start + 2
                         } else {
                             // The end of this certificate isn't in the buffer yet, try reading
@@ -372,8 +411,12 @@ impl FileCarver {
                             Some(m2) => {
                                 let b64_end = b64_start + m2.start();
                                 let encoded = &buf[b64_start..b64_end];
-                                if let Ok(bytes) = pem_base64_decode(&encoded) {
-                                    results.push(CertificateBytes(bytes));
+                                match pem_base64_decode(&encoded) {
+                                    Ok(bytes) => results.push(Ok(CertificateBytes(bytes))),
+                                    Err(e) => trace!(
+                                        "Skipping PEM certificate with invalid contents, {}",
+                                        e,
+                                    ),
                                 }
                                 b64_start - 5
                             }
@@ -413,9 +456,15 @@ impl FileCarver {
                                     Some(m2) => {
                                         let b64_end = b64_start + m2.start();
                                         let encoded = &buf[b64_start..b64_end];
-                                        if let Ok(bytes) = pem_base64_decode(&encoded) {
-                                            let mut cursor = Cursor::new(bytes);
-                                            results.append(&mut self.carve_stream(&mut cursor));
+                                        match pem_base64_decode(&encoded) {
+                                            Ok(bytes) => {
+                                                let mut cursor = Cursor::new(bytes);
+                                                results.append(&mut self.carve_stream(&mut cursor));
+                                            }
+                                            Err(e) => trace!(
+                                                "Skipping XMLDsig tag with invalid base64 contents, {}",
+                                                e,
+                                            ),
                                         }
                                         match_end
                                     }
@@ -454,15 +503,18 @@ impl FileCarver {
         }
     }
 
-    pub fn carve_file<RS: Read + Seek>(&mut self, mut file: &mut RS) -> Vec<CertificateBytes> {
+    pub fn carve_file<RS: Read + Seek>(
+        &mut self,
+        mut file: &mut RS,
+    ) -> Vec<Result<CertificateBytes, CarveError>> {
         let mut magic: [u8; 4] = [0; 4];
         match file.read(&mut magic) {
             Ok(_) => (),
-            Err(_) => return Vec::new(),
+            Err(e) => return vec![Err(e.into())],
         }
         match file.seek(SeekFrom::Start(0)) {
             Ok(_) => (),
-            Err(_) => return Vec::new(),
+            Err(e) => return vec![Err(e.into())],
         }
         if magic == ZIP_MAGIC {
             let mut results = Vec::new();
@@ -472,12 +524,18 @@ impl FileCarver {
                         results.append(&mut self.carve_stream(&mut zip_file));
                     }
                     Ok(None) => break,
-                    Err(_) => break,
+                    Err(e) => {
+                        results.push(Err(e.into()));
+                        break;
+                    }
                 }
             }
             match file.seek(SeekFrom::Start(0)) {
                 Ok(_) => (),
-                Err(_) => return results,
+                Err(e) => {
+                    results.push(Err(e.into()));
+                    return results;
+                }
             }
             results.append(&mut self.carve_stream(&mut file));
             results
@@ -490,11 +548,11 @@ impl FileCarver {
         &mut self,
         mut file: &mut RS,
         path_buf: PathBuf,
-    ) -> Vec<MatchBytes> {
+    ) -> Vec<CarveBytesResult> {
         self.carve_file(&mut file)
             .into_iter()
-            .map(|certbytes| MatchBytes {
-                certbytes,
+            .map(|res| CarveBytesResult {
+                res,
                 path: path_buf.to_str().unwrap_or("(unprintable path)").to_owned(),
             })
             .collect()
@@ -503,7 +561,7 @@ impl FileCarver {
 
 #[cfg(not(unix))]
 fn filter_file_metadata(metadata: &std::fs::Metadata) -> bool {
-    metadata.len() > 0 && !metadata.file_type().is_symlink()
+    metadata.len() > 0 && !metadata.file_type().is_dir() && !metadata.file_type().is_symlink()
 }
 
 #[cfg(unix)]
@@ -512,7 +570,8 @@ fn filter_file_metadata(metadata: &std::fs::Metadata) -> bool {
         return false;
     }
     let file_type = metadata.file_type();
-    !file_type.is_symlink()
+    !file_type.is_dir()
+        && !file_type.is_symlink()
         && !file_type.is_block_device()
         && !file_type.is_char_device()
         && !file_type.is_fifo()
@@ -520,16 +579,22 @@ fn filter_file_metadata(metadata: &std::fs::Metadata) -> bool {
 }
 
 pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
-    mut logs: Vec<LogInfo>,
+    logs: Vec<LogInfo>,
     paths: I,
     crtsh: &C,
     log_comms: &L,
 ) {
-    let (sender, receiver): (mpsc::Sender<MatchCert>, mpsc::Receiver<MatchCert>) = mpsc::channel();
+    let (sender, receiver): (
+        mpsc::Sender<CarveCertResult>,
+        mpsc::Receiver<CarveCertResult>,
+    ) = mpsc::channel();
     let thread = std::thread::spawn(move || {
         let mut pool = CertificatePool::new();
         for match_cert in receiver {
-            pool.add_cert(match_cert.cert, match_cert.path);
+            match match_cert.res {
+                Ok(cert) => pool.add_cert(cert, match_cert.path),
+                Err(e) => info!("Certificate parsing error in {}: {}", match_cert.path, e),
+            }
         }
         pool
     });
@@ -549,35 +614,48 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
                 .filter_map(Result::ok)
                 .filter(|entry| match entry.metadata() {
                     Ok(ref metadata) => filter_file_metadata(metadata),
-                    _ => false,
+                    Err(e) => {
+                        error!("Failed to read metadata of {:?}, {:?}", entry.path(), e);
+                        false
+                    }
                 })
                 .map(|entry| entry.path())
         })
         .map_init(FileCarver::new, |file_carver, path| {
-            if let Ok(mut file) = File::open(&path) {
-                file_carver.scan_file_object(&mut file, path)
-            } else {
-                vec![]
+            trace!("Carving {:?}", &path);
+            match File::open(&path) {
+                Ok(mut file) => file_carver.scan_file_object(&mut file, path),
+                Err(e) => {
+                    error!("Failed to open {:?}, {:?}", path, e);
+                    vec![]
+                }
             }
         })
         .flatten()
-        .filter_map(
-            |match_bytes| match Certificate::parse(match_bytes.certbytes) {
-                Ok(cert) => Some(MatchCert {
-                    cert,
-                    path: match_bytes.path,
-                }),
-                Err(_) => None,
-            },
-        )
-        .filter(|match_cert| match_cert.cert.looks_like_ca() || match_cert.cert.looks_like_server())
+        .map(|match_bytes| {
+            let res = match match_bytes.res {
+                Ok(bytes) => Certificate::parse(bytes).map_err(|e| e.into()),
+                Err(e) => Err(e),
+            };
+            CarveCertResult {
+                res,
+                path: match_bytes.path,
+            }
+        })
+        .filter(|match_cert| {
+            if let Ok(cert) = &match_cert.res {
+                cert.looks_like_ca() || cert.looks_like_server()
+            } else {
+                true
+            }
+        })
         .for_each_with(sender, |sender, match_cert| {
             sender.send(match_cert).unwrap()
         });
     let mut pool = thread.join().unwrap();
 
     let mut all_roots_vec = Vec::new();
-    for log in logs.iter_mut() {
+    for log in logs.iter() {
         for root_cert in log.roots.iter() {
             all_roots_vec.push(root_cert.clone());
         }
@@ -701,11 +779,11 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
     );
 }
 
-fn add_user_agent_header<'a, C: surf::middleware::HttpClient>(
+fn add_user_agent_header<C: surf::middleware::HttpClient>(
     mut req: surf::middleware::Request,
     client: C,
-    next: surf::middleware::Next<'a, C>,
-) -> BoxFuture<'a, Result<surf::middleware::Response, surf::Exception>> {
+    next: surf::middleware::Next<'_, C>,
+) -> BoxFuture<'_, Result<surf::middleware::Response, surf::Exception>> {
     Box::pin(async move {
         req.headers_mut().insert(
             surf::http::header::USER_AGENT,

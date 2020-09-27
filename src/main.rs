@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use clap::{App, Arg};
+use std::convert::TryInto;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -210,11 +211,24 @@ fn main() {
                 .min_values(1)
                 .help("File or directory paths"),
         )
+        .arg(
+            Arg::with_name("v")
+                .short("v")
+                .multiple(true)
+                .help("Sets the verbosity level"),
+        )
         .get_matches();
     let paths = matches
         .values_of_os("paths")
         .unwrap()
         .map(|osstr: &OsStr| -> PathBuf { From::from(osstr) });
+    let verbosity = matches.occurrences_of("v");
+
+    stderrlog::new()
+        .module(module_path!())
+        .verbosity(verbosity.try_into().unwrap())
+        .init()
+        .unwrap();
 
     let client = surf::Client::new();
 
