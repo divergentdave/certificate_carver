@@ -561,7 +561,7 @@ impl FileCarver {
 
 #[cfg(not(unix))]
 fn filter_file_metadata(metadata: &std::fs::Metadata) -> bool {
-    metadata.len() > 0 && !file_type.is_dir() && !metadata.file_type().is_symlink()
+    metadata.len() > 0 && !metadata.file_type().is_dir() && !metadata.file_type().is_symlink()
 }
 
 #[cfg(unix)]
