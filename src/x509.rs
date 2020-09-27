@@ -1,6 +1,6 @@
 use encoding::all::ISO_8859_1;
 use encoding::{DecoderTrap, Encoding};
-use log::{debug, error, warn};
+use log::{debug, error, info, warn};
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
 use std::fmt::Display;
@@ -280,6 +280,7 @@ impl NameType {
 impl From<&[u8]> for NameType {
     fn from(type_oid: &[u8]) -> NameType {
         if type_oid.len() != 3 || type_oid[0] != 0x55 || type_oid[1] != 0x04 {
+            info!("Unrecognized name type, {:02x?}", type_oid);
             NameType::UnrecognizedType
         } else {
             match type_oid[2] {
@@ -297,7 +298,10 @@ impl From<&[u8]> for NameType {
                 0x2B => NameType::Initials,
                 0x41 => NameType::Pseudonym,
                 0x2C => NameType::GenerationQualifier,
-                _ => NameType::UnrecognizedType,
+                _ => {
+                    info!("Unrecognized name type, {:02x?}", type_oid);
+                    NameType::UnrecognizedType
+                }
             }
         }
     }
