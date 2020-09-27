@@ -48,8 +48,10 @@ fn test_cross_signatures() {
         let result = file_carver.scan_file_object(&mut cursor, PathBuf::from(*path));
         assert_eq!(result.len(), 1);
         result.into_iter().for_each(|cert_match| {
-            if let Ok(cert) = Certificate::parse(cert_match.certbytes) {
-                pool.add_cert(cert, cert_match.path)
+            if let Ok(certbytes) = cert_match.res {
+                if let Ok(cert) = Certificate::parse(certbytes) {
+                    pool.add_cert(cert, cert_match.path)
+                }
             }
         });
     }
