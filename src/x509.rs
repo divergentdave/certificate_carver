@@ -466,13 +466,15 @@ impl PartialEq for RelativeDistinguishedName {
 impl Hash for RelativeDistinguishedName {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.attribs.len().hash(state);
-        if self.attribs.len() == 1 {
-            self.attribs[0].hash(state);
-        } else if self.attribs.len() > 1 {
-            let mut sorted = self.attribs.clone();
-            sorted.sort();
-            for attrib in sorted.iter() {
-                attrib.hash(state);
+        match self.attribs.len() {
+            0 => {}
+            1 => self.attribs[0].hash(state),
+            _ => {
+                let mut sorted = self.attribs.clone();
+                sorted.sort();
+                for attrib in sorted.iter() {
+                    attrib.hash(state);
+                }
             }
         }
     }
