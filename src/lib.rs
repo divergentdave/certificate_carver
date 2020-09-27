@@ -12,7 +12,6 @@ use log::{error, info, trace};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use regex::bytes::{CaptureLocations, Regex};
 use std::collections::{HashMap, HashSet};
-use std::convert::TryInto;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::fs::File;
 use std::io::{self, Cursor, Read, Seek, SeekFrom};
@@ -387,9 +386,9 @@ impl FileCarver {
             let consume_amount: usize = match HEADER_RE.captures_read(&mut self.caps, &buf) {
                 Some(_) => {
                     if let Some((start, _end)) = self.caps.get(1) {
-                        let (length_start, length_end) = self.caps.get(2).unwrap();
-                        let length_bytes = &buf[length_start..length_end];
-                        let length = u16::from_be_bytes(length_bytes.try_into().unwrap()) as usize;
+                        let (length_start, _length_end) = self.caps.get(2).unwrap();
+                        let length_bytes = [buf[length_start], buf[length_start + 1]];
+                        let length = u16::from_be_bytes(length_bytes) as usize;
                         let end = start + length + 4;
                         if end <= buf.len() {
                             results.push(Ok(CertificateBytes(buf[start..end].to_vec())));
