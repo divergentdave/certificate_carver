@@ -87,13 +87,12 @@ dependencies = [
 
 [[package]]
 name = "async-std"
-version = "1.6.4"
+version = "1.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "async-global-executor 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "async-io 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "async-mutex 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "async-task 3.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "blocking 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "crossbeam-utils 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-channel 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -111,11 +110,6 @@ dependencies = [
  "slab 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "wasm-bindgen-futures 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
-
-[[package]]
-name = "async-task"
-version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "async-task"
@@ -229,7 +223,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "certificate_carver"
 version = "0.1.7-alpha"
 dependencies = [
- "async-std 1.6.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "async-std 1.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "base64 0.12.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.4.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1485,8 +1479,7 @@ dependencies = [
 "checksum async-global-executor 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "5586e693d02f9b439742e9d5d68bd64d923c6861954f7d78f91001a0e152d589"
 "checksum async-io 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "38628c78a34f111c5a6b98fc87dfc056cd1590b61afe748b145be4623c56d194"
 "checksum async-mutex 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "065de1ccf10280d0d75c2f3a71a970ee1007c85c51aa3e7deee1df100f1dfadb"
-"checksum async-std 1.6.4 (registry+https://github.com/rust-lang/crates.io-index)" = "3c92085acfce8b32e5b261d0b59b8f3309aee69fea421ea3f271f8b93225754f"
-"checksum async-task 3.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "c17772156ef2829aadc587461c7753af20b7e8db1529bc66855add962a3b35d3"
+"checksum async-std 1.6.5 (registry+https://github.com/rust-lang/crates.io-index)" = "a9fa76751505e8df1c7a77762f60486f60c71bbd9b8557f4da6ad47d083732ed"
 "checksum async-task 4.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "8ab27c1aa62945039e44edaeee1dc23c74cc0c303dd5fe0fb462a184f1c3a518"
 "checksum atomic-waker 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "065374052e7df7ee4047b1160cca5e1467a12351a40b3da123c870ba0b8eda2a"
 "checksum atty 0.2.14 (registry+https://github.com/rust-lang/crates.io-index)" = "d9b39be18770d11421cdb1b9947a45dd3f37e93092cbf377614828a319d5fee8"
