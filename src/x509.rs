@@ -1,6 +1,6 @@
 use encoding::all::ISO_8859_1;
 use encoding::{DecoderTrap, Encoding};
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
 use std::fmt::Display;
@@ -141,6 +141,8 @@ impl Certificate {
             let issuer = expect_tag_and_get_value(tbs_der, Tag::Sequence, Error::BadDERIssuer)?;
             let issuer = copy_input(&issuer);
 
+            // If a CRL is carved, parsing will fail here, as CRLs have a Time for thisUpdate where
+            // certificates have a SEQUENCE for Validity.
             let not_after_year = nested(
                 tbs_der,
                 Tag::Sequence,
@@ -877,7 +879,7 @@ fn parse_extensions(der: &mut untrusted::Reader) -> Result<ExtensionFlags, Error
                     );
                     match result {
                         Ok(ca) => basic_constraints_ca = ca,
-                        Err(e) => error!("Error parsing basic constraints extension, {}", e),
+                        Err(e) => warn!("Error parsing basic constraints extension, {}", e),
                     }
                 } else if id == DER_OID_EXTENSION_KEY_USAGE {
                     let result = nested(
@@ -899,7 +901,7 @@ fn parse_extensions(der: &mut untrusted::Reader) -> Result<ExtensionFlags, Error
                             // or keyAgreement(4) bits are set
                             ku_tls_handshake = byte & 0xA8 != 0;
                         }
-                        Err(e) => error!("Error parsing key usage extension, {}", e),
+                        Err(e) => warn!("Error parsing key usage extension, {}", e),
                     }
                 } else if id == DER_OID_EXTENSION_EXTENDED_KEY_USAGE {
                     let result = nested(
@@ -928,7 +930,7 @@ fn parse_extensions(der: &mut untrusted::Reader) -> Result<ExtensionFlags, Error
                             has_eku = true;
                             eku_server_auth = server_auth;
                         }
-                        Err(e) => error!("Error parsing extended key usage extension, {}", e),
+                        Err(e) => warn!("Error parsing extended key usage extension, {}", e),
                     }
                 }
                 Ok(())

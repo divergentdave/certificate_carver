@@ -8,7 +8,7 @@ pub mod x509;
 use futures_core::future::BoxFuture;
 use jwalk::WalkDir;
 use lazy_static::lazy_static;
-use log::{error, info, trace};
+use log::{debug, error, info, trace};
 use memmem::{Searcher, TwoWaySearcher};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use regex::bytes::{CaptureLocations, Regex};
@@ -594,7 +594,10 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
         for match_cert in receiver {
             match match_cert.res {
                 Ok(cert) => pool.add_cert(cert, match_cert.path),
-                Err(e) => info!("Certificate parsing error in {}: {}", match_cert.path, e),
+                Err(e) => {
+                    info!("Error in {}: {}", match_cert.path, e);
+                    debug!("{:?}", e);
+                }
             }
         }
         pool
