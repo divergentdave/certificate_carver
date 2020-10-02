@@ -4,12 +4,14 @@ pub mod crtsh;
 pub mod ctlog;
 pub mod ldapprep;
 pub mod mocks;
+pub mod pdfsig;
 pub mod x509;
 
 use jwalk::WalkDir;
 use lazy_static::lazy_static;
 use log::{debug, error, info, trace};
 use memmem::{Searcher, TwoWaySearcher};
+use pdf::error::PdfError;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use regex::bytes::{CaptureLocations, Regex};
 use std::{
@@ -21,6 +23,7 @@ use std::{
     sync::{mpsc, Arc},
 };
 use zip::read::read_zipfile_from_stream;
+use zip::result::ZipError;
 
 #[cfg(unix)]
 use std::os::unix::fs::FileTypeExt;
@@ -31,6 +34,7 @@ use crate::{
     x509::{Certificate, NameInfo},
 };
 
+const PDF_MAGIC: [u8; 4] = [0x25, 0x50, 0x44, 0x46];
 const ZIP_MAGIC: [u8; 4] = [0x50, 0x4b, 3, 4];
 
 // This was removed from base64 in version 0.10.0
@@ -307,6 +311,7 @@ lazy_static! {
         (-----BEGIN CERTIFICATE-----)|\
         (<(?:[A-Z_a-z][A-Z_a-z-.0-9]*:)?(?:X509Certificate|EncapsulatedTimeStamp|CertifiedRole|EncapsulatedX509Certificate|EncapsulatedCRLValue|EncapsulatedOCSPValue)[> ])"
     ).unwrap();
+    static ref PDF_HEADER_SEARCHER: TwoWaySearcher<'static> = TwoWaySearcher::new(&PDF_MAGIC[..]);
     static ref PEM_END_SEARCHER: TwoWaySearcher<'static> = TwoWaySearcher::new(b"-----END CERTIFICATE-----");
     static ref XMLDSIG_END_RE: Regex = Regex::new(
         "</(?:[A-Z_a-z][A-Z_a-z-.0-9]*:)?(?:X509Certificate|EncapsulatedTimeStamp|CertifiedRole|EncapsulatedX509Certificate|EncapsulatedCRLValue|EncapsulatedOCSPValue)>"
@@ -317,7 +322,8 @@ lazy_static! {
 pub enum CarveError {
     IO(io::Error),
     X509(x509::Error),
-    Zip(zip::result::ZipError),
+    Zip(ZipError),
+    PDF(PdfError),
 }
 
 impl fmt::Display for CarveError {
@@ -326,6 +332,7 @@ impl fmt::Display for CarveError {
             CarveError::IO(e) => Display::fmt(e, f),
             CarveError::X509(e) => Display::fmt(e, f),
             CarveError::Zip(e) => Display::fmt(e, f),
+            CarveError::PDF(e) => Display::fmt(e, f),
         }
     }
 }
@@ -342,9 +349,15 @@ impl From<x509::Error> for CarveError {
     }
 }
 
-impl From<zip::result::ZipError> for CarveError {
-    fn from(e: zip::result::ZipError) -> Self {
+impl From<ZipError> for CarveError {
+    fn from(e: ZipError) -> Self {
         CarveError::Zip(e)
+    }
+}
+
+impl From<PdfError> for CarveError {
+    fn from(e: PdfError) -> Self {
+        CarveError::PDF(e)
     }
 }
 
@@ -357,6 +370,26 @@ struct CarveCertResult {
     pub res: Result<Certificate, CarveError>,
     pub path: String,
 }
+
+trait ReadExt: Read {
+    fn read_exact_or_eof(&mut self, mut buf: &mut [u8]) -> Result<usize, io::Error> {
+        let mut total_bytes_read = 0;
+        while !buf.is_empty() {
+            match self.read(buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    total_bytes_read += n;
+                    buf = &mut buf[n..];
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {}
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(total_bytes_read)
+    }
+}
+
+impl<R: Read> ReadExt for R {}
 
 pub struct FileCarver {
     caps: CaptureLocations,
@@ -519,11 +552,12 @@ impl FileCarver {
         &mut self,
         mut file: &mut RS,
     ) -> Vec<Result<CertificateBytes, CarveError>> {
-        let mut magic: [u8; 4] = [0; 4];
-        match file.read(&mut magic) {
-            Ok(_) => (),
+        let mut buffer: [u8; 1024] = [0; 1024];
+        let buffer_avail = match file.read_exact_or_eof(&mut buffer) {
+            Ok(bytes_read) => &buffer[..bytes_read],
             Err(e) => return vec![Err(e.into())],
-        }
+        };
+        let magic = &buffer_avail[..std::cmp::min(4, buffer_avail.len())];
         match file.seek(SeekFrom::Start(0)) {
             Ok(_) => (),
             Err(e) => return vec![Err(e.into())],
@@ -551,9 +585,38 @@ impl FileCarver {
             }
             results.append(&mut self.carve_stream(&mut file));
             results
+        } else if PDF_HEADER_SEARCHER.search_in(buffer_avail).is_some() {
+            trace!("PDF magic bytes found");
+            let mut buffer = Vec::new();
+            match file.read_to_end(&mut buffer) {
+                Ok(_) => (),
+                Err(e) => {
+                    return vec![Err(e.into())];
+                }
+            }
+            let mut cursor = Cursor::new(buffer);
+            let mut results = self.carve_stream(&mut cursor);
+            let buffer = cursor.into_inner();
+            match self.carve_pdf(buffer) {
+                Ok(mut pdf_results) => results.append(&mut pdf_results),
+                Err(e) => results.push(Err(e.into())),
+            }
+            results
         } else {
             self.carve_stream(&mut file)
         }
+    }
+
+    fn carve_pdf(
+        &mut self,
+        data: Vec<u8>,
+    ) -> Result<Vec<Result<CertificateBytes, CarveError>>, PdfError> {
+        let blobs = pdfsig::find_signature_blobs(data)?;
+        let mut results = Vec::new();
+        for blob in blobs.into_iter() {
+            results.append(&mut self.carve_stream(&mut Cursor::new(blob)));
+        }
+        Ok(results)
     }
 
     pub fn scan_file_object<RS: Read + Seek>(

@@ -72,3 +72,21 @@ fn test_xmldsig() {
     assert!(pool.fp_map.iter().any(|(fp, _)| fp.as_ref() == root_fp));
     assert_eq!(pool.fp_map.len(), 2);
 }
+
+#[test]
+fn test_pdf_1() {
+    let bytes = include_bytes!("files/collected/SampleSignedPDFDocument.pdf");
+    let mut stream = Cursor::new(&bytes[..]);
+    let mut file_carver = FileCarver::new();
+    let certs = file_carver.carve_file(&mut stream);
+    assert_eq!(certs.len(), 7);
+}
+
+#[test]
+fn test_pdf_2() {
+    let bytes = include_bytes!("files/collected/SampleSignedPDFDocument.decompressed.pdf");
+    let mut stream = Cursor::new(&bytes[..]);
+    let mut file_carver = FileCarver::new();
+    let certs = file_carver.carve_file(&mut stream);
+    assert_eq!(certs.len(), 7);
+}
