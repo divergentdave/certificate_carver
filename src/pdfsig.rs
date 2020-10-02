@@ -1,4 +1,4 @@
-use log::trace;
+use log::{trace, warn};
 use pdf::{
     self,
     backend::Backend,
@@ -25,6 +25,9 @@ struct Catalog {
 struct AcroForm {
     #[pdf(key = "Fields")]
     pub fields: Vec<Annot>,
+
+    #[pdf(key = "SigFlags")]
+    pub sig_flags: Option<i32>,
 }
 
 #[derive(Debug, Object)]
@@ -53,7 +56,17 @@ pub fn find_signature_blobs(data: Vec<u8>) -> Result<Vec<Vec<u8>>, PdfError> {
 
     let mut results = Vec::new();
     if let Some(forms) = trailer.root.forms {
-        trace!("PDF XForms are present");
+        let signatures_exist = match forms.sig_flags {
+            Some(flags) if flags & 1 == 1 => {
+                trace!("PDF XForms are present, and the SignaturesExist flag is set");
+                true
+            }
+            _ => {
+                trace!("PDF XForms are present (no signatures)");
+                false
+            }
+        };
+
         for field in forms.fields.into_iter() {
             if field.field_type == "Sig" {
                 trace!("PDF signature field is present");
@@ -66,6 +79,10 @@ pub fn find_signature_blobs(data: Vec<u8>) -> Result<Vec<Vec<u8>>, PdfError> {
                     }
                 }
             }
+        }
+
+        if signatures_exist && results.len() == 0 {
+            warn!("PDF SignaturesExist flag was set, but no signature blobs were extracted");
         }
     }
     Ok(results)
