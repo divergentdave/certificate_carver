@@ -611,7 +611,7 @@ impl FileCarver {
         &mut self,
         data: Vec<u8>,
     ) -> Result<Vec<Result<CertificateBytes, CarveError>>, PdfError> {
-        let blobs = pdfsig::find_signature_blobs(data)?;
+        let blobs = pdfsig::find_blobs(data)?;
         let mut results = Vec::new();
         for blob in blobs.into_iter() {
             results.append(&mut self.carve_stream(&mut Cursor::new(blob)));

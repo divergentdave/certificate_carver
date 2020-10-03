@@ -90,3 +90,12 @@ fn test_pdf_2() {
     let certs = file_carver.carve_file(&mut stream);
     assert_eq!(certs.len(), 7);
 }
+
+#[test]
+fn test_pdf_embedded_fonts() {
+    let bytes = include_bytes!("files/collected/IF11643.pdf");
+    let mut stream = Cursor::new(&bytes[..]);
+    let mut file_carver = FileCarver::new();
+    let certs = file_carver.carve_file(&mut stream);
+    assert_eq!(certs.len(), 22);
+}
