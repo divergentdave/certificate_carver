@@ -30,7 +30,7 @@ struct Catalog {
 #[derive(Debug, Object)]
 struct AcroForm {
     #[pdf(key = "Fields")]
-    fields: Vec<Annot>,
+    fields: Vec<Ref<Annot>>,
 
     #[pdf(key = "SigFlags")]
     sig_flags: Option<i32>,
@@ -39,10 +39,13 @@ struct AcroForm {
 #[derive(Debug, Object)]
 struct Annot {
     #[pdf(key = "FT")]
-    field_type: String,
+    field_type: Option<String>,
 
     #[pdf(key = "V")]
     value: Option<Value>,
+
+    #[pdf(key = "Kids")]
+    kids: Vec<Ref<Annot>>,
 }
 
 #[derive(Debug, Object)]
@@ -123,8 +126,65 @@ struct FontDescriptor {
     font_file_3: Option<Stream>,
 }
 
-fn find_signature_blobs(trailer: &Trailer) -> Vec<Vec<u8>> {
-    let mut results = Vec::new();
+trait FormFieldVisitor {
+    fn visit_field(&mut self, field: &Annot);
+    fn visit_field_end(&mut self);
+
+    fn walk_fields<R: Resolve>(
+        &mut self,
+        fields: &[Ref<Annot>],
+        resolve: &R,
+    ) -> Result<(), PdfError> {
+        for field in fields {
+            let field = resolve.get(*field)?;
+            self.visit_field(&*field);
+            if !field.kids.is_empty() {
+                self.walk_fields(&*field.kids, resolve)?;
+            }
+            self.visit_field_end();
+        }
+        Ok(())
+    }
+}
+
+struct SignatureFormFieldVisitor {
+    blobs: Vec<Vec<u8>>,
+}
+
+impl SignatureFormFieldVisitor {
+    fn new() -> SignatureFormFieldVisitor {
+        SignatureFormFieldVisitor { blobs: Vec::new() }
+    }
+
+    fn into_blobs(self) -> Vec<Vec<u8>> {
+        self.blobs
+    }
+}
+
+impl FormFieldVisitor for SignatureFormFieldVisitor {
+    fn visit_field(&mut self, field: &Annot) {
+        if let Some(field_type) = &field.field_type {
+            if field_type == "Sig" {
+                trace!("PDF signature field is present");
+                if let Some(value) = &field.value {
+                    if let Some(contents) = &value.contents {
+                        self.blobs.push(contents.as_bytes().to_vec());
+                    }
+                    if let Some(cert) = &value.cert {
+                        self.blobs.push(cert.as_bytes().to_vec());
+                    }
+                }
+            }
+        }
+    }
+
+    fn visit_field_end(&mut self) {}
+}
+
+fn find_signature_blobs<R: Resolve>(
+    trailer: &Trailer,
+    resolve: &R,
+) -> Result<Vec<Vec<u8>>, PdfError> {
     if let Some(forms) = &trailer.root.forms {
         let signatures_exist = match forms.sig_flags {
             Some(flags) if flags & 1 == 1 => {
@@ -137,25 +197,17 @@ fn find_signature_blobs(trailer: &Trailer) -> Vec<Vec<u8>> {
             }
         };
 
-        for field in forms.fields.iter() {
-            if field.field_type == "Sig" {
-                trace!("PDF signature field is present");
-                if let Some(value) = &field.value {
-                    if let Some(contents) = &value.contents {
-                        results.push(contents.as_bytes().to_vec());
-                    }
-                    if let Some(cert) = &value.cert {
-                        results.push(cert.as_bytes().to_vec());
-                    }
-                }
-            }
-        }
+        let mut visitor = SignatureFormFieldVisitor::new();
+        visitor.walk_fields(&forms.fields, resolve)?;
+        let results = visitor.into_blobs();
 
         if signatures_exist && results.is_empty() {
             warn!("PDF SignaturesExist flag was set, but no signature blobs were extracted");
         }
+        Ok(results)
+    } else {
+        Ok(vec![])
     }
-    results
 }
 
 trait PageVisitor {
@@ -231,13 +283,17 @@ fn find_font_blobs<R: Resolve>(trailer: &Trailer, resolve: &R) -> Result<Vec<Vec
     Ok(results)
 }
 
-pub fn find_blobs(data: Vec<u8>) -> Result<Vec<Vec<u8>>, PdfError> {
+fn load_pdf_data(data: Vec<u8>) -> Result<(Storage<Vec<u8>>, Trailer), PdfError> {
     let start_offset = data.locate_start_offset()?;
     let (refs, trailer) = data.read_xref_table_and_trailer(start_offset)?;
     let storage = Storage::new(data, refs, start_offset);
     let trailer = Trailer::from_primitive(Primitive::Dictionary(trailer), &storage)?;
+    Ok((storage, trailer))
+}
 
-    let mut results = find_signature_blobs(&trailer);
+pub fn find_blobs(data: Vec<u8>) -> Result<Vec<Vec<u8>>, PdfError> {
+    let (storage, trailer) = load_pdf_data(data)?;
+    let mut results = find_signature_blobs(&trailer, &storage)?;
     results.append(&mut find_font_blobs(&trailer, &storage)?);
     Ok(results)
 }
