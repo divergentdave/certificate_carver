@@ -4,7 +4,7 @@ pub mod crtsh;
 pub mod ctlog;
 pub mod ldapprep;
 pub mod mocks;
-pub mod pdfsig;
+pub mod pdfblobs;
 pub mod x509;
 
 use jwalk::WalkDir;
@@ -611,7 +611,7 @@ impl FileCarver {
         &mut self,
         data: Vec<u8>,
     ) -> Result<Vec<Result<CertificateBytes, CarveError>>, PdfError> {
-        let blobs = pdfsig::find_blobs(data)?;
+        let blobs = pdfblobs::find_blobs(data)?;
         let mut results = Vec::new();
         for blob in blobs.into_iter() {
             results.append(&mut self.carve_stream(&mut Cursor::new(blob)));
