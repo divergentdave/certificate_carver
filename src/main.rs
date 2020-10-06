@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use clap::{App, Arg};
+use futures_core::future::BoxFuture;
 use std::convert::TryInto;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -195,6 +196,28 @@ fn make_log_list() -> Vec<LogInfo> {
     ]
 }
 
+fn add_user_agent_header(
+    mut req: surf::Request,
+    client: surf::Client,
+    next: surf::middleware::Next<'_>,
+) -> BoxFuture<'_, Result<surf::Response, surf::Error>> {
+    Box::pin(async move {
+        req.insert_header(
+            surf::http::headers::USER_AGENT,
+            surf::http::headers::HeaderValue::from_bytes(
+                b"certificate_carver (https://github.com/divergentdave/certificate_carver)"
+                    .to_vec(),
+            )
+            .unwrap(),
+        );
+        next.run(req, client).await
+    })
+}
+
+fn build_surf_client() -> surf::Client {
+    surf::Client::new().with(add_user_agent_header)
+}
+
 fn main() {
     let matches = App::new("Certificate Carver")
         .version("0.1.7-alpha")
@@ -230,7 +253,7 @@ fn main() {
         .init()
         .unwrap();
 
-    let client = surf::Client::new();
+    let client = build_surf_client();
 
     let crtsh = RealCrtShServer::new(&client);
     let crtsh = RetryDelayCrtShServer::new(crtsh, Duration::new(5, 0));
