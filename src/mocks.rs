@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use surf::url::Url;
+use surf::Url;
 
 use crate::crtsh::CrtShServer;
 use crate::ctlog::{AddChainResponse, LogInfo, LogServers};

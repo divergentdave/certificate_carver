@@ -7,7 +7,7 @@ use chrono::{Datelike, Utc};
 use json::{self, JsonValue};
 use lazy_static::lazy_static;
 use std::collections::HashSet;
-use surf::url::Url;
+use surf::Url;
 
 pub struct GetRootsResponse {
     certificates: Vec<String>,
@@ -160,17 +160,17 @@ pub trait LogServers {
     ) -> Result<AddChainResponse, ApiError>;
 }
 
-pub struct RealLogServers<'a, C: surf::middleware::HttpClient> {
-    client: &'a surf::Client<C>,
+pub struct RealLogServers<'a> {
+    client: &'a surf::Client,
 }
 
-impl<'a, C: surf::middleware::HttpClient> RealLogServers<'a, C> {
-    pub fn new(client: &'a surf::Client<C>) -> RealLogServers<'a, C> {
+impl<'a> RealLogServers<'a> {
+    pub fn new(client: &'a surf::Client) -> RealLogServers<'a> {
         RealLogServers { client }
     }
 }
 
-impl<C: surf::middleware::HttpClient> LogServers for RealLogServers<'_, C> {
+impl LogServers for RealLogServers<'_> {
     fn submit_chain(
         &self,
         log: &LogInfo,
@@ -186,14 +186,13 @@ impl<C: surf::middleware::HttpClient> LogServers for RealLogServers<'_, C> {
         let mut response = block_on(
             self.client
                 .post(url)
-                .set_header("Content-Type", "application/json")
-                .body_bytes(request_body.dump())
-                .middleware(crate::add_user_agent_header),
+                .header("Content-Type", "application/json")
+                .body(request_body.dump()),
         )?;
         if !response.status().is_success() {
             return Err(ApiError::Status(response.status()));
         }
-        let response_body = AddChainResponse::parse(&block_on(response.body_string())?)?;
+        let response_body = AddChainResponse::parse(block_on(response.body_string())?.as_str())?;
         Ok(response_body)
     }
 }

@@ -1,6 +1,6 @@
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
-use surf::url::Url;
+use surf::Url;
 
 use certificate_carver::ctlog::{LogInfo, LogShard};
 use certificate_carver::mocks::{MockCrtShServer, MockLogServers};

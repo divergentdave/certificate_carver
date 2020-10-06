@@ -5,7 +5,6 @@ pub mod ldapprep;
 pub mod mocks;
 pub mod x509;
 
-use futures_core::future::BoxFuture;
 use jwalk::WalkDir;
 use lazy_static::lazy_static;
 use log::{debug, error, info, trace};
@@ -100,8 +99,8 @@ impl CertificateRecord {
 #[derive(Debug)]
 pub enum ApiError {
     Io(io::Error),
-    Surf(surf::Exception),
-    Status(surf::http::status::StatusCode),
+    Surf(surf::Error),
+    Status(surf::http::StatusCode),
     Json(json::Error),
     InvalidResponse(&'static str),
 }
@@ -111,10 +110,7 @@ impl Display for ApiError {
         match self {
             ApiError::Io(err) => Display::fmt(err, f),
             ApiError::Surf(err) => Display::fmt(err, f),
-            ApiError::Status(code) => match code.canonical_reason() {
-                Some(reason) => write!(f, "{} {}", code.as_u16(), reason),
-                None => write!(f, "{}", code.as_u16()),
-            },
+            ApiError::Status(code) => write!(f, "{} {}", *code as u16, code.canonical_reason()),
             ApiError::Json(err) => Display::fmt(err, f),
             ApiError::InvalidResponse(details) => write!(f, "Invalid response, {}", details),
         }
@@ -129,14 +125,14 @@ impl From<io::Error> for ApiError {
     }
 }
 
-impl From<surf::Exception> for ApiError {
-    fn from(e: surf::Exception) -> ApiError {
+impl From<surf::Error> for ApiError {
+    fn from(e: surf::Error) -> ApiError {
         ApiError::Surf(e)
     }
 }
 
-impl From<surf::http::status::StatusCode> for ApiError {
-    fn from(e: surf::http::status::StatusCode) -> ApiError {
+impl From<surf::http::StatusCode> for ApiError {
+    fn from(e: surf::http::StatusCode) -> ApiError {
         ApiError::Status(e)
     }
 }
@@ -781,22 +777,6 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
         "Successfully submitted {}/{} new certificates",
         new_submission_count, new_certs_len
     );
-}
-
-fn add_user_agent_header<C: surf::middleware::HttpClient>(
-    mut req: surf::middleware::Request,
-    client: C,
-    next: surf::middleware::Next<'_, C>,
-) -> BoxFuture<'_, Result<surf::middleware::Response, surf::Exception>> {
-    Box::pin(async move {
-        req.headers_mut().insert(
-            surf::http::header::USER_AGENT,
-            surf::http::header::HeaderValue::from_static(
-                "certificate_carver (https://github.com/divergentdave/certificate_carver)",
-            ),
-        );
-        next.run(req, client).await
-    })
 }
 
 #[cfg(test)]
