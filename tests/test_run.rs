@@ -4,7 +4,7 @@ use surf::Url;
 
 use certificate_carver::ctlog::{LogInfo, LogShard};
 use certificate_carver::mocks::{MockCrtShServer, MockLogServers};
-use certificate_carver::run;
+use certificate_carver::{run, CarveConfig};
 
 #[test]
 fn test_run() {
@@ -21,7 +21,8 @@ fn test_run() {
     )));
     let crtsh = MockCrtShServer::default();
     let log_comms = MockLogServers::new();
-    run(logs, args.into_iter(), &crtsh, &log_comms);
+    let config = CarveConfig::new(4);
+    run(logs, args.into_iter(), &crtsh, &log_comms, config);
 
     let mut chains = log_comms.submitted_chains.borrow_mut();
     chains.sort_by_key(|(url, chain)| -> (Url, Vec<Vec<u8>>) {

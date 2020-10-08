@@ -143,6 +143,16 @@ impl From<json::Error> for ApiError {
     }
 }
 
+pub struct CarveConfig {
+    threads: usize,
+}
+
+impl CarveConfig {
+    pub fn new(threads: usize) -> CarveConfig {
+        CarveConfig { threads }
+    }
+}
+
 struct BufReaderOverlap<R> {
     inner: R,
     buf: Box<[u8]>,
@@ -580,6 +590,7 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
     paths: I,
     crtsh: &C,
     log_comms: &L,
+    config: CarveConfig,
 ) {
     let (sender, receiver): (
         mpsc::Sender<CarveCertResult>,
@@ -600,7 +611,7 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
     });
     let threadpool = Arc::new(
         rayon::ThreadPoolBuilder::new()
-            .num_threads(4)
+            .num_threads(config.threads)
             .build()
             .unwrap(),
     );

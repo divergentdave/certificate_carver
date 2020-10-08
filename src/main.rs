@@ -5,11 +5,12 @@ use futures_core::future::BoxFuture;
 use std::convert::TryInto;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
+use std::process;
 use std::time::Duration;
 
 use certificate_carver::crtsh::{CachedCrtShServer, RealCrtShServer, RetryDelayCrtShServer};
 use certificate_carver::ctlog::{LogInfo, LogShard, RealLogServers};
-use certificate_carver::run;
+use certificate_carver::{run, CarveConfig};
 
 const PILOT_DAEDALUS_ROOTS: &str = include_str!("../roots/pilot-daedalus.json");
 const ICARUS_ROOTS: &str = include_str!("../roots/icarus.json");
@@ -232,6 +233,7 @@ fn main() {
                 .multiple(true)
                 .required(true)
                 .min_values(1)
+                .allow_hyphen_values(true)
                 .help("File or directory paths"),
         )
         .arg(
@@ -240,18 +242,32 @@ fn main() {
                 .multiple(true)
                 .help("Sets the verbosity level"),
         )
+        .arg(
+            Arg::with_name("jobs")
+                .short("j")
+                .default_value("4")
+                .help("Sets the number of carving threads"),
+        )
         .get_matches();
     let paths = matches
         .values_of_os("paths")
         .unwrap()
         .map(|osstr: &OsStr| -> PathBuf { From::from(osstr) });
-    let verbosity = matches.occurrences_of("v");
 
+    let verbosity = matches.occurrences_of("v");
     stderrlog::new()
         .module(module_path!())
         .verbosity(verbosity.try_into().unwrap())
         .init()
         .unwrap();
+
+    let carve_config = match matches.value_of("jobs").unwrap().parse() {
+        Err(_) | Ok(0) => {
+            eprintln!("Invalid number of threads");
+            process::exit(1);
+        }
+        Ok(threads) => CarveConfig::new(threads),
+    };
 
     let client = build_surf_client();
 
@@ -264,5 +280,6 @@ fn main() {
     let log_comms = RealLogServers::new(&client);
 
     let logs = make_log_list();
-    run(logs, paths, &crtsh, &log_comms);
+
+    run(logs, paths, &crtsh, &log_comms, carve_config);
 }
