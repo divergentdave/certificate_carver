@@ -891,6 +891,7 @@ fn parse_extensions(der: &mut untrusted::Reader) -> Result<ExtensionFlags, Error
                             let _unused_bits_at_end =
                                 der.read_byte().map_err(|_| Error::BadDERKeyUsage)?;
                             let byte = der.read_byte().unwrap_or(0);
+                            der.skip_to_end(); // Ignore all higher bits, don't check unused bits
                             Ok(byte)
                         },
                     );
