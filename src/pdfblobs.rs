@@ -5,7 +5,7 @@ use pdf::{
     error::PdfError,
     file::Storage,
     object::{Object, Ref, Resolve, Stream},
-    primitive::{Dictionary, PdfString, Primitive},
+    primitive::{Dictionary, Primitive},
 };
 use pdf_derive::Object;
 use std::collections::HashMap;
@@ -42,19 +42,10 @@ struct Annot {
     field_type: Option<String>,
 
     #[pdf(key = "V")]
-    value: Option<Value>,
+    value: Option<Primitive>,
 
     #[pdf(key = "Kids")]
     kids: Vec<Ref<Annot>>,
-}
-
-#[derive(Debug, Object)]
-struct Value {
-    #[pdf(key = "Contents")]
-    contents: Option<PdfString>,
-
-    #[pdf(key = "Cert")]
-    cert: Option<PdfString>,
 }
 
 #[derive(Debug)]
@@ -147,13 +138,17 @@ trait FormFieldVisitor {
     }
 }
 
-struct SignatureFormFieldVisitor {
+struct SignatureFormFieldVisitor<'a, R: Resolve> {
     blobs: Vec<Vec<u8>>,
+    resolve: &'a R,
 }
 
-impl SignatureFormFieldVisitor {
-    fn new() -> SignatureFormFieldVisitor {
-        SignatureFormFieldVisitor { blobs: Vec::new() }
+impl<'a, R: Resolve> SignatureFormFieldVisitor<'a, R> {
+    fn new(resolve: &'a R) -> SignatureFormFieldVisitor<'a, R> {
+        SignatureFormFieldVisitor {
+            blobs: Vec::new(),
+            resolve,
+        }
     }
 
     fn into_blobs(self) -> Vec<Vec<u8>> {
@@ -161,17 +156,20 @@ impl SignatureFormFieldVisitor {
     }
 }
 
-impl FormFieldVisitor for SignatureFormFieldVisitor {
+impl<'a, R: Resolve> FormFieldVisitor for SignatureFormFieldVisitor<'a, R> {
     fn visit_field(&mut self, field: &Annot) {
         if let Some(field_type) = &field.field_type {
             if field_type == "Sig" {
                 trace!("PDF signature field is present");
                 if let Some(value) = &field.value {
-                    if let Some(contents) = &value.contents {
-                        self.blobs.push(contents.as_bytes().to_vec());
-                    }
-                    if let Some(cert) = &value.cert {
-                        self.blobs.push(cert.as_bytes().to_vec());
+                    if let Ok(dict) = value.clone().into_dictionary(self.resolve) {
+                        for key in &["Contents", "Cert"] {
+                            if let Some(obj) = dict.get(key) {
+                                if let Ok(string) = obj.as_string() {
+                                    self.blobs.push(string.as_bytes().to_vec());
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -197,7 +195,7 @@ fn find_signature_blobs<R: Resolve>(
             }
         };
 
-        let mut visitor = SignatureFormFieldVisitor::new();
+        let mut visitor = SignatureFormFieldVisitor::new(resolve);
         visitor.walk_fields(&forms.fields, resolve)?;
         let results = visitor.into_blobs();
 
