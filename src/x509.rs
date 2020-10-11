@@ -43,7 +43,7 @@ enum Tag {
     ContextSpecificConstructed3 = CONTEXT_SPECIFIC | CONSTRUCTED | 3,
 }
 
-const NAME_ATTRIBUTES_DESCRIPTIONS: [(NameType, &str); 19] = [
+const NAME_ATTRIBUTES_DESCRIPTIONS: [(NameType, &str); 21] = [
     (NameType::CountryName, "C"),
     (NameType::OrganizationName, "O"),
     (NameType::OrganizationalUnitName, "OU"),
@@ -66,6 +66,8 @@ const NAME_ATTRIBUTES_DESCRIPTIONS: [(NameType, &str); 19] = [
     (NameType::PostalCode, "Postal Code"),
     (NameType::UniqueIdentifier, "Unique Identifier"),
     (NameType::EmailAddress, "Email Address"),
+    (NameType::DomainComponent, "Domain Component"),
+    (NameType::Rfc822Mailbox, "RFC822 Mailbox"),
 ];
 
 #[derive(Clone)]
@@ -259,6 +261,8 @@ pub enum NameType {
     PostalCode,
     UniqueIdentifier,
     EmailAddress,
+    DomainComponent,
+    Rfc822Mailbox,
     UnrecognizedType,
 }
 
@@ -266,6 +270,7 @@ pub enum MatchingRule {
     CaseIgnoreMatch,
     BitStringMatchStrict,
     Pkcs9CaseIgnoreMatch,
+    CaseIgnoreIA5Match,
     Unknown,
 }
 
@@ -292,6 +297,8 @@ impl NameType {
             NameType::PostalCode => MatchingRule::CaseIgnoreMatch,
             NameType::UniqueIdentifier => MatchingRule::BitStringMatchStrict,
             NameType::EmailAddress => MatchingRule::Pkcs9CaseIgnoreMatch,
+            NameType::DomainComponent => MatchingRule::CaseIgnoreIA5Match,
+            NameType::Rfc822Mailbox => MatchingRule::CaseIgnoreIA5Match,
             NameType::UnrecognizedType => MatchingRule::Unknown,
         }
     }
@@ -326,6 +333,17 @@ impl From<&[u8]> for NameType {
             }
         } else if type_oid == b"\x2a\x86\x48\x86\xf7\x0d\x01\x09\x01" {
             NameType::EmailAddress
+        } else if type_oid.len() == 10
+            && &type_oid[..9] == [0x09, 0x92, 0x26, 0x89, 0x93, 0xf2, 0x2c, 0x64, 0x01]
+        {
+            match type_oid[9] {
+                0x19 => NameType::DomainComponent,
+                0x03 => NameType::Rfc822Mailbox,
+                _ => {
+                    info!("Unrecognized name type, {:02x?}", type_oid);
+                    NameType::UnrecognizedType
+                }
+            }
         } else {
             info!("Unrecognized name type, {:02x?}", type_oid);
             NameType::UnrecognizedType
@@ -338,6 +356,7 @@ pub enum NameTypeValue {
     CaseInsensitive(NameType, String, String, Vec<u8>),
     BitStringStrict(NameType, Vec<u8>),
     Pkcs9CaseInsensitive(NameType, String, String, Vec<u8>),
+    IA5CaseInsensitive(NameType, String, String, Vec<u8>),
     Unknown(NameType, Option<String>, Vec<u8>),
 }
 
@@ -370,6 +389,16 @@ impl NameTypeValue {
                         NameTypeValue::Pkcs9CaseInsensitive(name_type, value, prepped, der_bytes)
                     }
                 },
+                MatchingRule::CaseIgnoreIA5Match => match parse_ia5string(&value_bytes) {
+                    None => NameTypeValue::Unknown(name_type, None, der_bytes),
+                    Some(value) => match ldapprep_case_insensitive(&value) {
+                        Err(_) => NameTypeValue::Unknown(name_type, Some(value), der_bytes),
+                        Ok(prepped) => {
+                            let prepped = prepped.to_string();
+                            NameTypeValue::IA5CaseInsensitive(name_type, value, prepped, der_bytes)
+                        }
+                    },
+                },
                 MatchingRule::Unknown => NameTypeValue::Unknown(
                     name_type,
                     parse_directory_string(&value_bytes),
@@ -384,6 +413,7 @@ impl NameTypeValue {
             NameTypeValue::CaseInsensitive(name_type, _, _, _) => name_type,
             NameTypeValue::BitStringStrict(name_type, _) => name_type,
             NameTypeValue::Pkcs9CaseInsensitive(name_type, _, _, _) => name_type,
+            NameTypeValue::IA5CaseInsensitive(name_type, _, _, _) => name_type,
             NameTypeValue::Unknown(name_type, _, _) => name_type,
         }
     }
@@ -412,6 +442,10 @@ impl Ord for NameTypeValue {
                     NameTypeValue::Pkcs9CaseInsensitive(_, _, other_prepped, _),
                 ) => self_prepped.cmp(&other_prepped),
                 (
+                    NameTypeValue::IA5CaseInsensitive(_, _, self_prepped, _),
+                    NameTypeValue::IA5CaseInsensitive(_, _, other_prepped, _),
+                ) => self_prepped.cmp(&other_prepped),
+                (
                     NameTypeValue::Unknown(_, _, self_bytes),
                     NameTypeValue::Unknown(_, _, other_bytes),
                 ) => self_bytes.cmp(&other_bytes),
@@ -425,6 +459,10 @@ impl Ord for NameTypeValue {
                 )
                 | (
                     NameTypeValue::CaseInsensitive(_, _, _, self_bytes),
+                    NameTypeValue::IA5CaseInsensitive(_, _, _, other_bytes),
+                )
+                | (
+                    NameTypeValue::CaseInsensitive(_, _, _, self_bytes),
                     NameTypeValue::Unknown(_, _, other_bytes),
                 )
                 | (
@@ -434,6 +472,10 @@ impl Ord for NameTypeValue {
                 | (
                     NameTypeValue::BitStringStrict(_, self_bytes),
                     NameTypeValue::Pkcs9CaseInsensitive(_, _, _, other_bytes),
+                )
+                | (
+                    NameTypeValue::BitStringStrict(_, self_bytes),
+                    NameTypeValue::IA5CaseInsensitive(_, _, _, other_bytes),
                 )
                 | (
                     NameTypeValue::BitStringStrict(_, self_bytes),
@@ -449,6 +491,26 @@ impl Ord for NameTypeValue {
                 )
                 | (
                     NameTypeValue::Pkcs9CaseInsensitive(_, _, _, self_bytes),
+                    NameTypeValue::IA5CaseInsensitive(_, _, _, other_bytes),
+                )
+                | (
+                    NameTypeValue::Pkcs9CaseInsensitive(_, _, _, self_bytes),
+                    NameTypeValue::Unknown(_, _, other_bytes),
+                )
+                | (
+                    NameTypeValue::IA5CaseInsensitive(_, _, _, self_bytes),
+                    NameTypeValue::CaseInsensitive(_, _, _, other_bytes),
+                )
+                | (
+                    NameTypeValue::IA5CaseInsensitive(_, _, _, self_bytes),
+                    NameTypeValue::BitStringStrict(_, other_bytes),
+                )
+                | (
+                    NameTypeValue::IA5CaseInsensitive(_, _, _, self_bytes),
+                    NameTypeValue::Pkcs9CaseInsensitive(_, _, _, other_bytes),
+                )
+                | (
+                    NameTypeValue::IA5CaseInsensitive(_, _, _, self_bytes),
                     NameTypeValue::Unknown(_, _, other_bytes),
                 )
                 | (
@@ -462,6 +524,10 @@ impl Ord for NameTypeValue {
                 | (
                     NameTypeValue::Unknown(_, _, self_bytes),
                     NameTypeValue::Pkcs9CaseInsensitive(_, _, _, other_bytes),
+                )
+                | (
+                    NameTypeValue::Unknown(_, _, self_bytes),
+                    NameTypeValue::IA5CaseInsensitive(_, _, _, other_bytes),
                 ) => self_bytes.cmp(&other_bytes),
             },
             result => result,
@@ -493,8 +559,13 @@ impl Hash for NameTypeValue {
                 name_type.hash(state);
                 prepped.hash(state);
             }
-            NameTypeValue::Unknown(_, _, der) => {
+            NameTypeValue::IA5CaseInsensitive(name_type, _, prepped, _) => {
                 4.hash(state);
+                name_type.hash(state);
+                prepped.hash(state);
+            }
+            NameTypeValue::Unknown(_, _, der) => {
+                5.hash(state);
                 der.hash(state);
             }
         }
@@ -717,6 +788,9 @@ impl Display for NameInfo {
                                 }
                                 NameTypeValue::BitStringStrict(name_type, _) => (name_type, None),
                                 NameTypeValue::Pkcs9CaseInsensitive(name_type, value, _, _) => {
+                                    (name_type, Some(value))
+                                }
+                                NameTypeValue::IA5CaseInsensitive(name_type, value, _, _) => {
                                     (name_type, Some(value))
                                 }
                                 NameTypeValue::Unknown(name_type, value, _) => {
