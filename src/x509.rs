@@ -42,7 +42,7 @@ enum Tag {
     ContextSpecificConstructed3 = CONTEXT_SPECIFIC | CONSTRUCTED | 3,
 }
 
-const NAME_ATTRIBUTES_DESCRIPTIONS: [(NameType, &str); 14] = [
+const NAME_ATTRIBUTES_DESCRIPTIONS: [(NameType, &str); 17] = [
     (NameType::CountryName, "C"),
     (NameType::OrganizationName, "O"),
     (NameType::OrganizationalUnitName, "OU"),
@@ -60,6 +60,9 @@ const NAME_ATTRIBUTES_DESCRIPTIONS: [(NameType, &str); 14] = [
     (NameType::Initials, "I"),
     (NameType::Pseudonym, "Pseudonym"),
     (NameType::GenerationQualifier, "Generation Qualifier"),
+    (NameType::OrganizationIdentifier, "Organization Identifier"),
+    (NameType::StreetAddress, "Street Address"),
+    (NameType::PostalCode, "Postal Code"),
 ];
 
 #[derive(Clone)]
@@ -248,6 +251,9 @@ pub enum NameType {
     Initials,
     Pseudonym,
     GenerationQualifier,
+    OrganizationIdentifier,
+    StreetAddress,
+    PostalCode,
     UnrecognizedType,
 }
 
@@ -274,6 +280,9 @@ impl NameType {
             NameType::Initials => MatchingRule::CaseIgnoreMatch,
             NameType::Pseudonym => MatchingRule::CaseIgnoreMatch,
             NameType::GenerationQualifier => MatchingRule::CaseIgnoreMatch,
+            NameType::OrganizationIdentifier => MatchingRule::CaseIgnoreMatch,
+            NameType::StreetAddress => MatchingRule::CaseIgnoreMatch,
+            NameType::PostalCode => MatchingRule::CaseIgnoreMatch,
             NameType::UnrecognizedType => MatchingRule::Unknown,
         }
     }
@@ -300,6 +309,9 @@ impl From<&[u8]> for NameType {
                 0x2B => NameType::Initials,
                 0x41 => NameType::Pseudonym,
                 0x2C => NameType::GenerationQualifier,
+                0x61 => NameType::OrganizationIdentifier,
+                0x09 => NameType::StreetAddress,
+                0x11 => NameType::PostalCode,
                 _ => {
                     info!("Unrecognized name type, {:02x?}", type_oid);
                     NameType::UnrecognizedType
