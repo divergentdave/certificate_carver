@@ -42,7 +42,7 @@ enum Tag {
     ContextSpecificConstructed3 = CONTEXT_SPECIFIC | CONSTRUCTED | 3,
 }
 
-const NAME_ATTRIBUTES_DESCRIPTIONS: [(NameType, &str); 17] = [
+const NAME_ATTRIBUTES_DESCRIPTIONS: [(NameType, &str); 18] = [
     (NameType::CountryName, "C"),
     (NameType::OrganizationName, "O"),
     (NameType::OrganizationalUnitName, "OU"),
@@ -63,6 +63,7 @@ const NAME_ATTRIBUTES_DESCRIPTIONS: [(NameType, &str); 17] = [
     (NameType::OrganizationIdentifier, "Organization Identifier"),
     (NameType::StreetAddress, "Street Address"),
     (NameType::PostalCode, "Postal Code"),
+    (NameType::UniqueIdentifier, "Unique Identifier"),
 ];
 
 #[derive(Clone)]
@@ -254,11 +255,13 @@ pub enum NameType {
     OrganizationIdentifier,
     StreetAddress,
     PostalCode,
+    UniqueIdentifier,
     UnrecognizedType,
 }
 
 pub enum MatchingRule {
     CaseIgnoreMatch,
+    BitStringMatchStrict,
     Unknown,
 }
 
@@ -283,6 +286,7 @@ impl NameType {
             NameType::OrganizationIdentifier => MatchingRule::CaseIgnoreMatch,
             NameType::StreetAddress => MatchingRule::CaseIgnoreMatch,
             NameType::PostalCode => MatchingRule::CaseIgnoreMatch,
+            NameType::UniqueIdentifier => MatchingRule::BitStringMatchStrict,
             NameType::UnrecognizedType => MatchingRule::Unknown,
         }
     }
@@ -312,6 +316,7 @@ impl From<&[u8]> for NameType {
                 0x61 => NameType::OrganizationIdentifier,
                 0x09 => NameType::StreetAddress,
                 0x11 => NameType::PostalCode,
+                0x2D => NameType::UniqueIdentifier,
                 _ => {
                     info!("Unrecognized name type, {:02x?}", type_oid);
                     NameType::UnrecognizedType
@@ -324,6 +329,7 @@ impl From<&[u8]> for NameType {
 #[derive(Clone, Eq, Debug)]
 pub enum NameTypeValue {
     CaseInsensitive(NameType, String, String, Vec<u8>),
+    BitStringStrict(NameType, Vec<u8>),
     Unknown(NameType, Option<String>, Vec<u8>),
 }
 
@@ -335,11 +341,6 @@ impl NameTypeValue {
                 NameTypeValue::Unknown(name_type, parse_directory_string(&value_bytes), der_bytes)
             }
             name_type => match name_type.matching_rule() {
-                MatchingRule::Unknown => NameTypeValue::Unknown(
-                    name_type,
-                    parse_directory_string(&value_bytes),
-                    der_bytes,
-                ),
                 MatchingRule::CaseIgnoreMatch => match parse_directory_string(&value_bytes) {
                     None => NameTypeValue::Unknown(name_type, None, der_bytes),
                     Some(value) => match ldapprep_case_insensitive(&value) {
@@ -352,6 +353,14 @@ impl NameTypeValue {
                         ),
                     },
                 },
+                MatchingRule::BitStringMatchStrict => {
+                    NameTypeValue::BitStringStrict(name_type, der_bytes)
+                }
+                MatchingRule::Unknown => NameTypeValue::Unknown(
+                    name_type,
+                    parse_directory_string(&value_bytes),
+                    der_bytes,
+                ),
             },
         }
     }
@@ -359,6 +368,7 @@ impl NameTypeValue {
     pub fn get_name_type(&self) -> &NameType {
         match self {
             NameTypeValue::CaseInsensitive(name_type, _, _, _) => name_type,
+            NameTypeValue::BitStringStrict(name_type, _) => name_type,
             NameTypeValue::Unknown(name_type, _, _) => name_type,
         }
     }
@@ -379,16 +389,36 @@ impl Ord for NameTypeValue {
                     NameTypeValue::CaseInsensitive(_, _, other_prepped, _),
                 ) => self_prepped.cmp(&other_prepped),
                 (
+                    NameTypeValue::BitStringStrict(_, self_bytes),
+                    NameTypeValue::BitStringStrict(_, other_bytes),
+                ) => self_bytes.cmp(&other_bytes),
+                (
                     NameTypeValue::Unknown(_, _, self_bytes),
                     NameTypeValue::Unknown(_, _, other_bytes),
                 ) => self_bytes.cmp(&other_bytes),
                 (
                     NameTypeValue::CaseInsensitive(_, _, _, self_bytes),
                     NameTypeValue::Unknown(_, _, other_bytes),
-                ) => self_bytes.cmp(&other_bytes),
-                (
+                )
+                | (
+                    NameTypeValue::CaseInsensitive(_, _, _, self_bytes),
+                    NameTypeValue::BitStringStrict(_, other_bytes),
+                )
+                | (
+                    NameTypeValue::BitStringStrict(_, self_bytes),
+                    NameTypeValue::CaseInsensitive(_, _, _, other_bytes),
+                )
+                | (
+                    NameTypeValue::BitStringStrict(_, self_bytes),
+                    NameTypeValue::Unknown(_, _, other_bytes),
+                )
+                | (
                     NameTypeValue::Unknown(_, _, self_bytes),
                     NameTypeValue::CaseInsensitive(_, _, _, other_bytes),
+                )
+                | (
+                    NameTypeValue::Unknown(_, _, self_bytes),
+                    NameTypeValue::BitStringStrict(_, other_bytes),
                 ) => self_bytes.cmp(&other_bytes),
             },
             result => result,
@@ -410,8 +440,13 @@ impl Hash for NameTypeValue {
                 name_type.hash(state);
                 prepped.hash(state);
             }
-            NameTypeValue::Unknown(_, _, der) => {
+            NameTypeValue::BitStringStrict(name_type, der) => {
                 2.hash(state);
+                name_type.hash(state);
+                der.hash(state);
+            }
+            NameTypeValue::Unknown(_, _, der) => {
+                3.hash(state);
                 der.hash(state);
             }
         }
@@ -590,6 +625,7 @@ impl Display for NameInfo {
                                 NameTypeValue::CaseInsensitive(name_type, value, _, _) => {
                                     (name_type, Some(value))
                                 }
+                                NameTypeValue::BitStringStrict(name_type, _) => (name_type, None),
                                 NameTypeValue::Unknown(name_type, value, _) => {
                                     (name_type, value.as_ref())
                                 }
