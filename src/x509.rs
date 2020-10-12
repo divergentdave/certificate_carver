@@ -1,4 +1,4 @@
-use encoding::all::ISO_8859_1;
+use encoding::all::{ISO_8859_1, UTF_16BE};
 use encoding::{DecoderTrap, Encoding};
 use log::{debug, info, warn};
 use sha2::{Digest, Sha256};
@@ -38,6 +38,7 @@ enum Tag {
     IA5String = 0x16,
     // UTCTime = 0x17,
     // GeneralizedTime = 0x18,
+    BMPString = 0x1E,
     ContextSpecificConstructed0 = CONTEXT_SPECIFIC | CONSTRUCTED,
     // ContextSpecificConstructed1 = CONTEXT_SPECIFIC | CONSTRUCTED | 1,
     ContextSpecificConstructed3 = CONTEXT_SPECIFIC | CONSTRUCTED | 3,
@@ -593,10 +594,19 @@ fn parse_directory_string(raw: &[u8]) -> Option<String> {
                 }
             } else if tag_usize == (Tag::TeletexString as usize) {
                 let mut decoded = String::new();
-                match ISO_8859_1.decode_to(slice, DecoderTrap::Replace, &mut decoded) {
+                match ISO_8859_1.decode_to(slice, DecoderTrap::Strict, &mut decoded) {
                     Ok(()) => Some(decoded),
                     Err(e) => {
                         warn!("Invalid Teletex string, {}", e);
+                        None
+                    }
+                }
+            } else if tag_usize == (Tag::BMPString as usize) {
+                let mut decoded = String::new();
+                match UTF_16BE.decode_to(slice, DecoderTrap::Strict, &mut decoded) {
+                    Ok(()) => Some(decoded),
+                    Err(e) => {
+                        warn!("Invalid BMPString, {}", e);
                         None
                     }
                 }
