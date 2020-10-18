@@ -1,7 +1,6 @@
 use log::{trace, warn};
 use pdf::{
     self,
-    backend::Backend,
     error::PdfError,
     file::Storage,
     object::{Object, Ref, Resolve, Stream},
@@ -282,9 +281,7 @@ fn find_font_blobs<R: Resolve>(trailer: &Trailer, resolve: &R) -> Result<Vec<Vec
 }
 
 fn load_pdf_data(data: Vec<u8>) -> Result<(Storage<Vec<u8>>, Trailer), PdfError> {
-    let start_offset = data.locate_start_offset()?;
-    let (refs, trailer) = data.read_xref_table_and_trailer(start_offset)?;
-    let storage = Storage::new(data, refs, start_offset);
+    let (storage, trailer) = pdf::file::load_storage_and_trailer(data)?;
     let trailer = Trailer::from_primitive(Primitive::Dictionary(trailer), &storage)?;
     Ok((storage, trailer))
 }
