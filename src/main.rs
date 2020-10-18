@@ -2,15 +2,19 @@
 
 use clap::{App, Arg};
 use futures_core::future::BoxFuture;
-use std::convert::TryInto;
-use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
-use std::process;
-use std::time::Duration;
+use std::{
+    convert::TryInto,
+    ffi::OsStr,
+    path::{Path, PathBuf},
+    process,
+    time::Duration,
+};
 
-use certificate_carver::crtsh::{CachedCrtShServer, RealCrtShServer, RetryDelayCrtShServer};
-use certificate_carver::ctlog::{LogInfo, LogShard, RealLogServers};
-use certificate_carver::{run, CarveConfig};
+use certificate_carver::{
+    crtsh::{CachedCrtShServer, RealCrtShServer, RetryDelayCrtShServer},
+    ctlog::{LogInfo, LogShard, RealLogServers},
+    run, CarveConfig,
+};
 
 const PILOT_DAEDALUS_ROOTS: &str = include_str!("../roots/pilot-daedalus.json");
 const ICARUS_ROOTS: &str = include_str!("../roots/icarus.json");

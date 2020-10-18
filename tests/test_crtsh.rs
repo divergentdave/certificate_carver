@@ -1,8 +1,10 @@
 use std::time::{Duration, Instant};
 
-use certificate_carver::crtsh::{CachedCrtShServer, CrtShServer, RetryDelayCrtShServer};
-use certificate_carver::mocks::MockCrtShServer;
-use certificate_carver::CertificateFingerprint;
+use certificate_carver::{
+    crtsh::{CachedCrtShServer, CrtShServer, RetryDelayCrtShServer},
+    mocks::MockCrtShServer,
+    CertificateFingerprint,
+};
 
 #[test]
 fn test_cache() {

@@ -2,9 +2,11 @@ use std::cell::RefCell;
 
 use surf::Url;
 
-use crate::crtsh::CrtShServer;
-use crate::ctlog::{AddChainResponse, LogInfo, LogServers};
-use crate::{ApiError, CertificateChain, CertificateFingerprint};
+use crate::{
+    crtsh::CrtShServer,
+    ctlog::{AddChainResponse, LogInfo, LogServers},
+    ApiError, CertificateChain, CertificateFingerprint,
+};
 
 pub struct MockCrtShServer {
     response: bool,

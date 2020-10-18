@@ -1,11 +1,12 @@
 mod utils;
 
-use std::io::Cursor;
-use std::path::PathBuf;
+use std::{io::Cursor, path::PathBuf};
 
-use certificate_carver::ctlog::{LogInfo, LogShard};
-use certificate_carver::x509::Certificate;
-use certificate_carver::{CertificatePool, FileCarver};
+use certificate_carver::{
+    ctlog::{LogInfo, LogShard},
+    x509::Certificate,
+    CertificatePool, FileCarver,
+};
 
 use crate::utils::decode_pem;
 

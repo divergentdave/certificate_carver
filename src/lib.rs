@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+
 pub mod crtsh;
 pub mod ctlog;
 pub mod ldapprep;
@@ -11,20 +12,24 @@ use log::{debug, error, info, trace};
 use memmem::{Searcher, TwoWaySearcher};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use regex::bytes::{CaptureLocations, Regex};
-use std::collections::{HashMap, HashSet};
-use std::fmt::{self, Debug, Display, Formatter};
-use std::fs::File;
-use std::io::{self, Cursor, Read, Seek, SeekFrom};
-use std::path::PathBuf;
-use std::sync::{mpsc, Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::{self, Debug, Display, Formatter},
+    fs::File,
+    io::{self, Cursor, Read, Seek, SeekFrom},
+    path::PathBuf,
+    sync::{mpsc, Arc},
+};
 use zip::read::read_zipfile_from_stream;
 
 #[cfg(unix)]
 use std::os::unix::fs::FileTypeExt;
 
-use crate::crtsh::CrtShServer;
-use crate::ctlog::{LogInfo, LogServers, TrustRoots};
-use crate::x509::{Certificate, NameInfo};
+use crate::{
+    crtsh::CrtShServer,
+    ctlog::{LogInfo, LogServers, TrustRoots},
+    x509::{Certificate, NameInfo},
+};
 
 const ZIP_MAGIC: [u8; 4] = [0x50, 0x4b, 3, 4];
 

@@ -2,9 +2,11 @@ use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use surf::Url;
 
-use certificate_carver::ctlog::{LogInfo, LogShard};
-use certificate_carver::mocks::{MockCrtShServer, MockLogServers};
-use certificate_carver::{run, CarveConfig};
+use certificate_carver::{
+    ctlog::{LogInfo, LogShard},
+    mocks::{MockCrtShServer, MockLogServers},
+    run, CarveConfig,
+};
 
 #[test]
 fn test_run() {

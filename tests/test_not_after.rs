@@ -1,7 +1,6 @@
 mod utils;
 
-use certificate_carver::x509::Certificate;
-use certificate_carver::CertificateBytes;
+use certificate_carver::{x509::Certificate, CertificateBytes};
 
 use crate::utils::decode_pem;
 

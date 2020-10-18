@@ -1,8 +1,10 @@
 use async_std::task::block_on;
 use sled::{Db, Tree};
-use std::sync::Mutex;
-use std::thread::sleep;
-use std::time::{Duration, Instant};
+use std::{
+    sync::Mutex,
+    thread::sleep,
+    time::{Duration, Instant},
+};
 use surf::Url;
 
 use crate::{ApiError, CertificateFingerprint};

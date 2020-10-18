@@ -1,7 +1,6 @@
 use std::io::Cursor;
 
-use certificate_carver::x509::Certificate;
-use certificate_carver::{CertificatePool, FileCarver};
+use certificate_carver::{x509::Certificate, CertificatePool, FileCarver};
 
 #[test]
 fn test_load_pem_chain() {

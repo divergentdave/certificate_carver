@@ -1,14 +1,16 @@
-use encoding::all::{ISO_8859_1, UTF_16BE};
-use encoding::{DecoderTrap, Encoding};
+use encoding::{
+    all::{ISO_8859_1, UTF_16BE},
+    DecoderTrap, Encoding,
+};
 use log::{debug, info, warn};
 use sha2::{Digest, Sha256};
-use std::cmp::Ordering;
-use std::fmt::Display;
-use std::hash::{Hash, Hasher};
+use std::{
+    cmp::Ordering,
+    fmt::Display,
+    hash::{Hash, Hasher},
+};
 
-use crate::{CertificateBytes, CertificateFingerprint};
-
-use crate::ldapprep::ldapprep_case_insensitive;
+use crate::{ldapprep::ldapprep_case_insensitive, CertificateBytes, CertificateFingerprint};
 
 const CONSTRUCTED: u8 = 1 << 5;
 const CONTEXT_SPECIFIC: u8 = 2 << 6;
