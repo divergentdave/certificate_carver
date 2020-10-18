@@ -152,8 +152,12 @@ impl Certificate {
             let issuer = expect_tag_and_get_value(tbs_der, Tag::Sequence, Error::BadDERIssuer)?;
             let issuer = copy_input(&issuer);
 
-            // If a CRL is carved, parsing will fail here, as CRLs have a Time for thisUpdate where
-            // certificates have a SEQUENCE for Validity.
+            if tbs_der.peek(Tag::UTCTime as u8) || tbs_der.peek(Tag::GeneralizedTime as u8) {
+                // If a CRL is carved, parsing will fail here, as CRLs have a Time for thisUpdate where
+                // certificates have a SEQUENCE for Validity.
+                return Err(Error::IsCRL);
+            }
+
             let not_after_year = nested(
                 tbs_der,
                 Tag::Sequence,
@@ -896,6 +900,7 @@ pub enum Error {
     BadDERRDNValue,
     BadDERAlgorithm,
     BadDERSignature2,
+    IsCRL,
 }
 
 impl Display for Error {
@@ -936,6 +941,7 @@ impl Display for Error {
             Error::BadDERRDNValue => write!(f, "DER error encountered while parsing RelativeDistinguishedName Value"),
             Error::BadDERAlgorithm => write!(f, "DER error encountered while parsing outer signature algorithm"),
             Error::BadDERSignature2 => write!(f, "DER error encountered while parsing signature value"),
+            Error::IsCRL => write!(f, "Data is likely a DER-encoded CRL"),
         }
     }
 }
