@@ -614,7 +614,7 @@ impl FileCarver {
         let blobs = pdfblobs::find_blobs(data)?;
         let mut results = Vec::new();
         for blob in blobs.into_iter() {
-            results.append(&mut self.carve_stream(&mut Cursor::new(blob)));
+            results.append(&mut self.carve_file(&mut Cursor::new(blob)));
         }
         Ok(results)
     }
