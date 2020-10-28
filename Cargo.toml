@@ -18,8 +18,8 @@ jwalk = "0.5.1"
 lazy_static = "1.4"
 log = "0.4.11"
 memmem = "0.1.1"
-pdf = { git = "https://github.com/pdf-rs/pdf", rev = "51ca02431b78fef1bd61acf4647bba908fd22caf" }
-pdf_derive = { git = "https://github.com/pdf-rs/pdf", rev = "51ca02431b78fef1bd61acf4647bba908fd22caf" }
+pdf = { git = "https://github.com/pdf-rs/pdf", rev = "4da566aa90efb56d6b32b5974c4c777cf22a4225" }
+pdf_derive = { git = "https://github.com/pdf-rs/pdf", rev = "4da566aa90efb56d6b32b5974c4c777cf22a4225" }
 rayon = "1.3.1"
 sha2 = "0.9"
 sled = "0.34.2"
