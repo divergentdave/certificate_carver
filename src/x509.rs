@@ -341,7 +341,7 @@ impl From<&[u8]> for NameType {
         } else if type_oid == b"\x2a\x86\x48\x86\xf7\x0d\x01\x09\x01" {
             NameType::EmailAddress
         } else if type_oid.len() == 10
-            && &type_oid[..9] == [0x09, 0x92, 0x26, 0x89, 0x93, 0xf2, 0x2c, 0x64, 0x01]
+            && type_oid[..9] == [0x09, 0x92, 0x26, 0x89, 0x93, 0xf2, 0x2c, 0x64, 0x01]
         {
             match type_oid[9] {
                 0x19 => NameType::DomainComponent,
