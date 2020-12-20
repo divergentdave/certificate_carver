@@ -647,7 +647,7 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
                 }
             }
         })
-        .flatten()
+        .flatten_iter()
         .map(|match_bytes| {
             let res = match match_bytes.res {
                 Ok(bytes) => Certificate::parse(bytes).map_err(|e| e.into()),
