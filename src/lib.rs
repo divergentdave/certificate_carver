@@ -6,7 +6,7 @@ pub mod ldapprep;
 pub mod mocks;
 pub mod x509;
 
-use jwalk::WalkDir;
+use jwalk::WalkDirGeneric;
 use lazy_static::lazy_static;
 use log::{debug, error, info, trace};
 use memmem::{Searcher, TwoWaySearcher};
@@ -623,18 +623,31 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
     paths
         .par_bridge()
         .flat_map(|path| {
-            WalkDir::new(path)
+            WalkDirGeneric::<((), bool)>::new(path)
                 .parallelism(jwalk::Parallelism::RayonExistingPool(threadpool.clone()))
+                .process_read_dir(|_, _, _, dir_entry_results| {
+                    dir_entry_results.iter_mut().for_each(|dir_entry_result| {
+                        if let Ok(dir_entry) = dir_entry_result {
+                            match dir_entry.metadata() {
+                                Ok(metadata) => {
+                                    dir_entry.client_state = filter_file_metadata(&metadata);
+                                }
+                                Err(e) => {
+                                    error!(
+                                        "Failed to read metadata of {:?}, {:?}",
+                                        dir_entry.path(),
+                                        e,
+                                    );
+                                    dir_entry.client_state = false;
+                                }
+                            }
+                        }
+                    })
+                })
                 .into_iter()
                 .par_bridge()
                 .filter_map(Result::ok)
-                .filter(|entry| match entry.metadata() {
-                    Ok(ref metadata) => filter_file_metadata(metadata),
-                    Err(e) => {
-                        error!("Failed to read metadata of {:?}, {:?}", entry.path(), e);
-                        false
-                    }
-                })
+                .filter(|entry| entry.client_state)
                 .map(|entry| entry.path())
         })
         .map_init(FileCarver::new, |file_carver, path| {
