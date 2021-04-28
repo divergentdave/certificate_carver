@@ -1,0 +1,21 @@
+version: 2
+updates:
+- package-ecosystem: cargo
+  directory: "/"
+  schedule:
+    interval: daily
+    time: "16:00"
+    timezone: America/Chicago
+  open-pull-requests-limit: 10
+  ignore:
+  - dependency-name: regex
+    versions:
+    - 1.4.5
+  - dependency-name: zip
+    versions:
+    - 0.5.10
+    - 0.5.11
+  - dependency-name: futures-core
+    versions:
+    - 0.3.12
+    - 0.3.13
