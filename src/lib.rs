@@ -17,6 +17,7 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     fs::File,
     io::{self, Cursor, Read, Seek, SeekFrom},
+    panic::panic_any,
     path::PathBuf,
     sync::{mpsc, Arc},
 };
@@ -799,7 +800,7 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
         if any_chain && all_submission_errors {
             let error = last_submission_error.unwrap();
             let error_desc = error.to_string();
-            panic!(error_desc);
+            panic_any(error_desc);
         }
     }
     println!(
