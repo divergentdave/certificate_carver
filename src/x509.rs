@@ -915,28 +915,20 @@ impl NameInfo {
                                 Error::BadDERRDNAttribute,
                                 Error::BadDERRDNAttributeExtraData,
                                 |attrib_der| {
-                                    let mark_type_value_1 = attrib_der.mark();
-                                    let attrib_type = expect_tag_and_get_value(
-                                        attrib_der,
-                                        Tag::OID,
-                                        Error::BadDERRDNType,
-                                    )?;
+                                    let (type_and_value_data, (attrib_type, value_data)) =
+                                        attrib_der.read_partial(|r| {
+                                            let attrib_type = expect_tag_and_get_value(
+                                                r,
+                                                Tag::OID,
+                                                Error::BadDERRDNType,
+                                            )?;
+                                            let (value_data, _) = r.read_partial(|r| {
+                                                read_tag_and_get_value(r, Error::BadDERRDNValue)
+                                            })?;
+                                            Ok((attrib_type, value_data))
+                                        })?;
                                     let attrib_type = copy_input(&attrib_type);
-                                    let mark_value_1 = attrib_der.mark();
-                                    let (_value_tag, _value) =
-                                        read_tag_and_get_value(attrib_der, Error::BadDERRDNValue)?;
-                                    let mark_value_2 = attrib_der.mark();
-                                    let mark_type_value_2 = attrib_der.mark();
-                                    let value_data = attrib_der
-                                        .get_input_between_marks(mark_value_1, mark_value_2)
-                                        .unwrap();
                                     let value_data = copy_input(&value_data);
-                                    let type_and_value_data = attrib_der
-                                        .get_input_between_marks(
-                                            mark_type_value_1,
-                                            mark_type_value_2,
-                                        )
-                                        .unwrap();
                                     let type_and_value_data = copy_input(&type_and_value_data);
                                     attribs.push(NameTypeValue::parse(
                                         attrib_type.as_ref(),
@@ -1198,10 +1190,8 @@ fn copy_input(input: &untrusted::Input) -> Vec<u8> {
 }
 
 fn parse_signed_data<'a>(der: &mut untrusted::Reader<'a>) -> Result<untrusted::Input<'a>, Error> {
-    let mark1 = der.mark();
-    let tbs = expect_tag_and_get_value(der, Tag::Sequence, Error::BadDERCertificate)?;
-    let mark2 = der.mark();
-    let _data = der.get_input_between_marks(mark1, mark2).unwrap();
+    let (_data, tbs) =
+        der.read_partial(|r| expect_tag_and_get_value(r, Tag::Sequence, Error::BadDERCertificate))?;
     let _algorithm = expect_tag_and_get_value(der, Tag::Sequence, Error::BadDERAlgorithm)?;
     let _signature = bit_string_with_no_unused_bits(der, Error::BadDERSignature2)?;
     Ok(tbs)
