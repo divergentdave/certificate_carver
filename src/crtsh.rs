@@ -107,14 +107,14 @@ impl<T: CrtShServer> CrtShServer for RetryDelayCrtShServer<T> {
         let mut error_count = 0;
         loop {
             let mut now = Instant::now();
-            let elapsed = now.duration_since((*guard).last_request);
+            let elapsed = now.duration_since(guard.last_request);
             let delay = self.delay * (1 << error_count);
             if elapsed < delay {
                 let sleep_duration = delay - elapsed;
                 sleep(sleep_duration);
                 now = Instant::now();
             }
-            (*guard).last_request = now;
+            guard.last_request = now;
 
             let result = self.inner.check_crtsh(fp);
             match result {

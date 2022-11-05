@@ -23,6 +23,7 @@ const DER_OID_EKU_ANY_EKU: [u8; 4] = [0x55, 0x1D, 0x25, 0x00];
 
 #[derive(Clone, Copy, PartialEq)]
 #[repr(u8)]
+#[allow(clippy::upper_case_acronyms)]
 enum Tag {
     Boolean = 0x01,
     Integer = 0x02,
@@ -395,11 +396,11 @@ impl NameTypeValue {
         match name_type {
             NameType::UnrecognizedType => NameTypeValue::Unknown {
                 name_type,
-                text: parse_directory_string(&value_bytes),
+                text: parse_directory_string(value_bytes),
                 der,
             },
             name_type => match name_type.matching_rule() {
-                MatchingRule::CaseIgnoreMatch => match parse_directory_string(&value_bytes) {
+                MatchingRule::CaseIgnoreMatch => match parse_directory_string(value_bytes) {
                     None => NameTypeValue::Unknown {
                         name_type,
                         text: None,
@@ -425,7 +426,7 @@ impl NameTypeValue {
                 MatchingRule::BitStringMatchStrict => {
                     NameTypeValue::BitStringStrict { name_type, der }
                 }
-                MatchingRule::Pkcs9CaseIgnoreMatch => match parse_ia5string(&value_bytes) {
+                MatchingRule::Pkcs9CaseIgnoreMatch => match parse_ia5string(value_bytes) {
                     None => NameTypeValue::Unknown {
                         name_type,
                         text: None,
@@ -442,7 +443,7 @@ impl NameTypeValue {
                         }
                     }
                 },
-                MatchingRule::CaseIgnoreIA5Match => match parse_ia5string(&value_bytes) {
+                MatchingRule::CaseIgnoreIA5Match => match parse_ia5string(value_bytes) {
                     None => NameTypeValue::Unknown {
                         name_type,
                         text: None,
@@ -467,7 +468,7 @@ impl NameTypeValue {
                 },
                 MatchingRule::Unknown => NameTypeValue::Unknown {
                     name_type,
-                    text: parse_directory_string(&value_bytes),
+                    text: parse_directory_string(value_bytes),
                     der,
                 },
             },
@@ -493,7 +494,7 @@ impl PartialEq for NameTypeValue {
 
 impl Ord for NameTypeValue {
     fn cmp(&self, other: &NameTypeValue) -> Ordering {
-        match self.get_name_type().cmp(&other.get_name_type()) {
+        match self.get_name_type().cmp(other.get_name_type()) {
             Ordering::Equal => match (self, other) {
                 (
                     NameTypeValue::CaseInsensitive {
@@ -504,7 +505,7 @@ impl Ord for NameTypeValue {
                         prepped: other_prepped,
                         ..
                     },
-                ) => self_prepped.cmp(&other_prepped),
+                ) => self_prepped.cmp(other_prepped),
                 (
                     NameTypeValue::BitStringStrict {
                         der: self_bytes, ..
@@ -512,7 +513,7 @@ impl Ord for NameTypeValue {
                     NameTypeValue::BitStringStrict {
                         der: other_bytes, ..
                     },
-                ) => self_bytes.cmp(&other_bytes),
+                ) => self_bytes.cmp(other_bytes),
                 (
                     NameTypeValue::Pkcs9CaseInsensitive {
                         prepped: self_prepped,
@@ -522,7 +523,7 @@ impl Ord for NameTypeValue {
                         prepped: other_prepped,
                         ..
                     },
-                ) => self_prepped.cmp(&other_prepped),
+                ) => self_prepped.cmp(other_prepped),
                 (
                     NameTypeValue::IA5CaseInsensitive {
                         prepped: self_prepped,
@@ -532,7 +533,7 @@ impl Ord for NameTypeValue {
                         prepped: other_prepped,
                         ..
                     },
-                ) => self_prepped.cmp(&other_prepped),
+                ) => self_prepped.cmp(other_prepped),
                 (
                     NameTypeValue::Unknown {
                         der: self_bytes, ..
@@ -540,7 +541,7 @@ impl Ord for NameTypeValue {
                     NameTypeValue::Unknown {
                         der: other_bytes, ..
                     },
-                ) => self_bytes.cmp(&other_bytes),
+                ) => self_bytes.cmp(other_bytes),
                 (
                     NameTypeValue::CaseInsensitive {
                         der: self_bytes, ..
@@ -700,7 +701,7 @@ impl Ord for NameTypeValue {
                     NameTypeValue::IA5CaseInsensitive {
                         der: other_bytes, ..
                     },
-                ) => self_bytes.cmp(&other_bytes),
+                ) => self_bytes.cmp(other_bytes),
             },
             result => result,
         }
@@ -1366,7 +1367,7 @@ fn parse_time(input: &mut untrusted::Reader) -> Result<Year, Error> {
 
     fn read_digit(inner: &mut untrusted::Reader) -> Result<u64, Error> {
         let b = inner.read_byte().map_err(|_| Error::BadDERTimeValue)?;
-        if b >= 0x30 && b <= 0x39 {
+        if (0x30..=0x39).contains(&b) {
             Ok(u64::from(b - 0x30))
         } else {
             Err(Error::BadDERTimeValue)

@@ -266,7 +266,7 @@ impl CertificatePool {
 
                     let mut new = history.to_owned();
                     new.push(cert.fingerprint());
-                    if trust_roots.test_fingerprint(&issuer_fp) {
+                    if trust_roots.test_fingerprint(issuer_fp) {
                         partial_chains.push(new);
                         // only want this chain once, even if we have multiple equivalent roots
                         break;
@@ -396,7 +396,7 @@ impl FileCarver {
                 }
             };
             min_size = OVERLAP;
-            let consume_amount: usize = match HEADER_RE.captures_read(&mut self.caps, &buf) {
+            let consume_amount: usize = match HEADER_RE.captures_read(&mut self.caps, buf) {
                 Some(_) => {
                     if let Some((start, _end)) = self.caps.get(1) {
                         let (length_start, _length_end) = self.caps.get(2).unwrap();
@@ -760,7 +760,7 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
             let chains = pool.build_chains(cert, &log.trust_roots);
             for chain in chains.into_iter() {
                 any_chain = true;
-                match log_comms.submit_chain(&log, &chain) {
+                match log_comms.submit_chain(log, &chain) {
                     Ok(_) => {
                         if !any_submission_success {
                             new_submission_count += 1;
