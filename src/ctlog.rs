@@ -50,6 +50,7 @@ impl AddChainRequest {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct AddChainResponse {
     sct_version: u8,
     id: String,
