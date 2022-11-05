@@ -2,7 +2,7 @@
 $ certificate_carver --help
 Certificate Carver searches files for X.509 certificates and uploads them to Certificate Transparency logs.
 
-Usage: certificate_carver [OPTIONS] <paths>...
+Usage: certificate_carver[EXE] [OPTIONS] <paths>...
 
 Arguments:
   <paths>...  File or directory paths
