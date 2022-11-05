@@ -684,13 +684,22 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
         });
     let mut pool = thread.join().unwrap();
 
-    let mut all_roots_vec = Vec::new();
+    let mut all_roots_map: HashMap<CertificateFingerprint, Certificate> = HashMap::new();
     for log in logs.iter() {
         for root_cert in log.roots.iter() {
-            all_roots_vec.push(root_cert.clone());
+            all_roots_map
+                .entry(root_cert.fingerprint())
+                .or_insert_with(|| root_cert.clone());
         }
     }
+    let all_roots_vec = all_roots_map.into_values().collect::<Vec<_>>();
+    let mut count_is_root = 0;
     for root_cert in all_roots_vec.iter() {
+        if pool.fp_map.contains_key(&root_cert.fingerprint()) {
+            // Count the number of root certificates that were already added to the pool from
+            // files.
+            count_is_root += 1;
+        }
         pool.add_cert(root_cert.clone(), "log roots".to_string());
     }
     let mut all_roots = TrustRoots::new();
@@ -737,8 +746,8 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
     }
     let total = total_found + total_not_found;
     println!(
-        "{}/{} in crt.sh already, {}/{} not yet in crt.sh ({} did not chain to roots)",
-        total_found, total, total_not_found, total, count_no_chain
+        "{}/{} in crt.sh already, {}/{} not yet in crt.sh ({} did not chain to roots, {} were roots)",
+        total_found, total, total_not_found, total, count_no_chain, count_is_root
     );
     println!();
 
