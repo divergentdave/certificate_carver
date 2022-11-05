@@ -1,0 +1,21 @@
+```
+$ certificate_carver --help
+Certificate Carver 0.1.7-alpha
+David Cook <divergentdave@gmail.com>
+Certificate Carver searches files for X.509 certificates and uploads them to Certificate Transparency logs.
+
+USAGE:
+    certificate_carver [FLAGS] [OPTIONS] <paths>...
+
+FLAGS:
+    -h, --help       Prints help information
+    -v               Sets the verbosity level
+    -V, --version    Prints version information
+
+OPTIONS:
+    -j <jobs>        Sets the number of carving threads [default: 4]
+
+ARGS:
+    <paths>...    File or directory paths
+
+```
