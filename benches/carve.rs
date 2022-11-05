@@ -1,4 +1,3 @@
-#![feature(repeat_generic_slice)]
 #![feature(test)]
 extern crate test;
 
@@ -15,7 +14,7 @@ fn bench_carve_matches(b: &mut Bencher) {
     let mut file_carver = FileCarver::new();
     b.bytes = repeated.len().try_into().unwrap();
     b.iter(|| {
-        file_carver.carve_stream(&mut stream);
+        file_carver.carve_file(&mut stream);
         stream.seek(SeekFrom::Start(0)).unwrap();
     });
 }

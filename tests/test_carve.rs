@@ -62,11 +62,9 @@ fn test_xmldsig() {
     } else {
         false
     }));
-    for res in certs.into_iter() {
-        if let Ok(certbytes) = res {
-            if let Ok(cert) = Certificate::parse(certbytes) {
-                pool.add_cert(cert, "files/collected/OJ_L_2014_189_FULL.xml".to_string());
-            }
+    for certbytes in certs.into_iter().flatten() {
+        if let Ok(cert) = Certificate::parse(certbytes) {
+            pool.add_cert(cert, "files/collected/OJ_L_2014_189_FULL.xml".to_string());
         }
     }
     assert!(pool.fp_map.iter().any(|(fp, _)| fp.as_ref() == root_fp));
