@@ -3,7 +3,6 @@
 use clap::{builder::ValueParser, value_parser, Arg, ArgAction, Command};
 use futures_core::future::BoxFuture;
 use std::{
-    convert::TryInto,
     path::{Path, PathBuf},
     process,
     time::Duration,
@@ -260,7 +259,7 @@ fn main() {
     let verbosity = *matches.get_one::<u8>("verbose").unwrap();
     stderrlog::new()
         .module(module_path!())
-        .verbosity(verbosity.try_into().unwrap())
+        .verbosity(usize::from(verbosity))
         .init()
         .unwrap();
 
