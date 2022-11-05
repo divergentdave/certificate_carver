@@ -11,6 +11,8 @@ environment:
     VCPKGRS_DYNAMIC: 1
     OPENSSL_STATIC: 1
 
+    CARGO_INCREMENTAL: 0
+
   matrix:
     - TARGET: i686-pc-windows-msvc
     - TARGET: x86_64-pc-windows-msvc
