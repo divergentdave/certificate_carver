@@ -30,6 +30,7 @@ install:
   - mkdir C:\sccache
   - tar --force-local --strip-components=1 -C C:\sccache -xzf "sccache-%SCCACHE_VER%-x86_64-pc-windows-msvc.tar.gz"
   - set PATH=%PATH%;C:\sccache
+  - set SCCACHE_CONF=%CD%\ci\sccache.toml
   - sccache -V
   - set RUSTC_WRAPPER=sccache
 
