@@ -1,10 +1,9 @@
 #![forbid(unsafe_code)]
 
-use clap::{App, Arg};
+use clap::{builder::ValueParser, value_parser, Arg, ArgAction, Command};
 use futures_core::future::BoxFuture;
 use std::{
     convert::TryInto,
-    ffi::OsStr,
     path::{Path, PathBuf},
     process,
     time::Duration,
@@ -223,8 +222,8 @@ fn build_surf_client() -> surf::Client {
     surf::Client::new().with(add_user_agent_header)
 }
 
-fn main() {
-    let matches = App::new("Certificate Carver")
+fn app() -> Command {
+    Command::new("Certificate Carver")
         .version("0.1.7-alpha")
         .author("David Cook <divergentdave@gmail.com>")
         .about(
@@ -232,45 +231,45 @@ fn main() {
              uploads them to Certificate Transparency logs.",
         )
         .arg(
-            Arg::with_name("paths")
-                .takes_value(true)
-                .multiple(true)
+            Arg::new("paths")
+                .num_args(1..)
                 .required(true)
-                .min_values(1)
                 .allow_hyphen_values(true)
+                .value_parser(ValueParser::path_buf())
                 .help("File or directory paths"),
         )
         .arg(
-            Arg::with_name("v")
-                .short("v")
-                .multiple(true)
+            Arg::new("verbose")
+                .short('v')
+                .action(ArgAction::Count)
                 .help("Sets the verbosity level"),
         )
         .arg(
-            Arg::with_name("jobs")
-                .short("j")
+            Arg::new("jobs")
+                .short('j')
                 .default_value("4")
+                .value_parser(value_parser!(usize))
                 .help("Sets the number of carving threads"),
         )
-        .get_matches();
-    let paths = matches
-        .values_of_os("paths")
-        .unwrap()
-        .map(|osstr: &OsStr| -> PathBuf { From::from(osstr) });
+}
 
-    let verbosity = matches.occurrences_of("v");
+fn main() {
+    let matches = app().get_matches();
+    let paths = matches.get_many::<PathBuf>("paths").unwrap().cloned();
+
+    let verbosity = *matches.get_one::<u8>("verbose").unwrap();
     stderrlog::new()
         .module(module_path!())
         .verbosity(verbosity.try_into().unwrap())
         .init()
         .unwrap();
 
-    let carve_config = match matches.value_of("jobs").unwrap().parse() {
-        Err(_) | Ok(0) => {
+    let carve_config = match matches.get_one::<usize>("jobs").unwrap() {
+        0 => {
             eprintln!("Invalid number of threads");
             process::exit(1);
         }
-        Ok(threads) => CarveConfig::new(threads),
+        threads => CarveConfig::new(*threads),
     };
 
     let client = build_surf_client();
@@ -286,4 +285,9 @@ fn main() {
     let logs = make_log_list();
 
     run(logs, paths, &crtsh, &log_comms, carve_config);
+}
+
+#[test]
+fn verify_app() {
+    app().debug_assert();
 }
