@@ -52,7 +52,7 @@ fn pem_base64_encode(input: &[u8]) -> String {
 
 fn pem_base64_decode<T: ?Sized + AsRef<[u8]>>(input: &T) -> Result<Vec<u8>, base64::DecodeError> {
     let stripped = copy_without_whitespace(input.as_ref());
-    base64::decode_config(&stripped, pem_base64_config())
+    base64::decode_config(stripped, pem_base64_config())
 }
 
 #[derive(Hash, PartialOrd, Ord, PartialEq, Eq, Clone, Copy)]
