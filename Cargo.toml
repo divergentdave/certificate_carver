@@ -30,6 +30,6 @@ zip = { version = "0.6.3", default-features = false, features = ["deflate", "bzi
 trycmd = "0.14.3"
 
 [dependencies.regex]
-version = "1.4"
+version = "1.7.0"
 default-features = false
 features = ["std", "perf"]
