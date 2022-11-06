@@ -1,12 +1,12 @@
 #![forbid(unsafe_code)]
 
 use clap::{builder::ValueParser, value_parser, Arg, ArgAction, Command};
-use futures_core::future::BoxFuture;
 use std::{
     path::{Path, PathBuf},
     process,
     time::Duration,
 };
+use surf::http::headers::{HeaderValue, USER_AGENT};
 
 use certificate_carver::{
     crtsh::{CachedCrtShServer, RealCrtShServer, RetryDelayCrtShServer},
@@ -199,26 +199,19 @@ fn make_log_list() -> Vec<LogInfo> {
     ]
 }
 
-fn add_user_agent_header(
-    mut req: surf::Request,
-    client: surf::Client,
-    next: surf::middleware::Next<'_>,
-) -> BoxFuture<'_, Result<surf::Response, surf::Error>> {
-    Box::pin(async move {
-        req.insert_header(
-            surf::http::headers::USER_AGENT,
-            surf::http::headers::HeaderValue::from_bytes(
+fn build_surf_client() -> surf::Client {
+    surf::Config::new()
+        .add_header(
+            USER_AGENT,
+            HeaderValue::from_bytes(
                 b"certificate_carver (https://github.com/divergentdave/certificate_carver)"
                     .to_vec(),
             )
             .unwrap(),
-        );
-        next.run(req, client).await
-    })
-}
-
-fn build_surf_client() -> surf::Client {
-    surf::Client::new().with(add_user_agent_header)
+        )
+        .unwrap()
+        .try_into()
+        .unwrap()
 }
 
 fn app() -> Command {
