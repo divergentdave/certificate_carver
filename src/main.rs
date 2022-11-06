@@ -16,7 +16,6 @@ use certificate_carver::{
 
 const PILOT_DAEDALUS_ROOTS: &str = include_str!("../roots/pilot-daedalus.json");
 const ICARUS_ROOTS: &str = include_str!("../roots/icarus.json");
-const DIGICERT_CT1_ROOTS: &str = include_str!("../roots/digicert-ct1.json");
 const DODO_ROOTS: &str = include_str!("../roots/dodo.json");
 const MAMMOTH_SABRE_ROOTS: &str = include_str!("../roots/mammoth-sabre.json");
 const ARGON_XENON_ROOTS: &str = include_str!("../roots/argon-xenon.json");
@@ -39,11 +38,6 @@ fn make_log_list() -> Vec<LogInfo> {
             "https://ct.googleapis.com/icarus/",
             LogShard::Any,
             ICARUS_ROOTS,
-        ),
-        LogInfo::new(
-            "https://ct1.digicert-ct.com/log/",
-            LogShard::Any,
-            DIGICERT_CT1_ROOTS,
         ),
         LogInfo::new("https://dodo.ct.comodo.com/", LogShard::Any, DODO_ROOTS),
         LogInfo::new(
