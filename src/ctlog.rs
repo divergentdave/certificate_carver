@@ -145,7 +145,7 @@ impl LogInfo {
             LogShard::ExpiryYear(year) => year == not_after_year,
             LogShard::AlreadyExpired => {
                 lazy_static! {
-                    static ref CURRENT_YEAR: u64 = Utc::today().year() as u64;
+                    static ref CURRENT_YEAR: u64 = Utc::now().year() as u64;
                 }
                 not_after_year < *CURRENT_YEAR
             }
