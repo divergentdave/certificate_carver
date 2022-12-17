@@ -6,3 +6,4 @@ curl https://nessie2022.ct.digicert.com/log/ct/v1/get-roots > nessie-yeti.json
 curl https://ct.cloudflare.com/logs/nimbus2022/ct/v1/get-roots > nimbus.json
 curl https://ct.googleapis.com/daedalus/ct/v1/get-roots > daedalus.json
 curl https://gorgon.ct.digicert.com/log/ct/v1/get-roots > gorgon.json
+curl https://log.sm2ct.cn/2023/ct/v1/get-roots > zotrus.json
