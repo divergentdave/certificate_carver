@@ -71,6 +71,16 @@ fn make_log_list() -> Vec<LogInfo> {
             ARGON_XENON_ROOTS,
         ),
         LogInfo::new(
+            "https://ct.googleapis.com/logs/argon2023/",
+            LogShard::ExpiryYear(2023),
+            ARGON_XENON_ROOTS,
+        ),
+        LogInfo::new(
+            "https://ct.googleapis.com/logs/argon2024/",
+            LogShard::ExpiryYear(2024),
+            ARGON_XENON_ROOTS,
+        ),
+        LogInfo::new(
             "https://ct.googleapis.com/logs/xenon2018/",
             LogShard::ExpiryYear(2018),
             ARGON_XENON_ROOTS,
@@ -93,6 +103,16 @@ fn make_log_list() -> Vec<LogInfo> {
         LogInfo::new(
             "https://ct.googleapis.com/logs/xenon2022/",
             LogShard::ExpiryYear(2022),
+            ARGON_XENON_ROOTS,
+        ),
+        LogInfo::new(
+            "https://ct.googleapis.com/logs/xenon2023/",
+            LogShard::ExpiryYear(2023),
+            ARGON_XENON_ROOTS,
+        ),
+        LogInfo::new(
+            "https://ct.googleapis.com/logs/xenon2024/",
+            LogShard::ExpiryYear(2024),
             ARGON_XENON_ROOTS,
         ),
         LogInfo::new(
@@ -131,6 +151,11 @@ fn make_log_list() -> Vec<LogInfo> {
             NIMBUS_ROOTS,
         ),
         LogInfo::new(
+            "https://ct.cloudflare.com/logs/nimbus2024/",
+            LogShard::ExpiryYear(2024),
+            NIMBUS_ROOTS,
+        ),
+        LogInfo::new(
             "https://nessie2018.ct.digicert.com/log/",
             LogShard::ExpiryYear(2018),
             NESSIE_YETI_ROOTS,
@@ -156,6 +181,21 @@ fn make_log_list() -> Vec<LogInfo> {
             NESSIE_YETI_ROOTS,
         ),
         LogInfo::new(
+            "https://nessie2023.ct.digicert.com/log/",
+            LogShard::ExpiryYear(2023),
+            NESSIE_YETI_ROOTS,
+        ),
+        LogInfo::new(
+            "https://nessie2024.ct.digicert.com/log/",
+            LogShard::ExpiryYear(2024),
+            NESSIE_YETI_ROOTS,
+        ),
+        LogInfo::new(
+            "https://nessie2025.ct.digicert.com/log/",
+            LogShard::ExpiryYear(2025),
+            NESSIE_YETI_ROOTS,
+        ),
+        LogInfo::new(
             "https://yeti2018.ct.digicert.com/log/",
             LogShard::ExpiryYear(2018),
             NESSIE_YETI_ROOTS,
@@ -178,6 +218,21 @@ fn make_log_list() -> Vec<LogInfo> {
         LogInfo::new(
             "https://yeti2022.ct.digicert.com/log/",
             LogShard::ExpiryYear(2022),
+            NESSIE_YETI_ROOTS,
+        ),
+        LogInfo::new(
+            "https://yeti2023.ct.digicert.com/log/",
+            LogShard::ExpiryYear(2023),
+            NESSIE_YETI_ROOTS,
+        ),
+        LogInfo::new(
+            "https://yeti2024.ct.digicert.com/log/",
+            LogShard::ExpiryYear(2024),
+            NESSIE_YETI_ROOTS,
+        ),
+        LogInfo::new(
+            "https://yeti2025.ct.digicert.com/log/",
+            LogShard::ExpiryYear(2025),
             NESSIE_YETI_ROOTS,
         ),
         LogInfo::new(
