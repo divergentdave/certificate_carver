@@ -20,6 +20,7 @@ const MAMMOTH_SABRE_ROOTS: &str = include_str!("../roots/mammoth-sabre.json");
 const ARGON_XENON_ROOTS: &str = include_str!("../roots/argon-xenon.json");
 const NIMBUS_ROOTS: &str = include_str!("../roots/nimbus.json");
 const NESSIE_YETI_ROOTS: &str = include_str!("../roots/nessie-yeti.json");
+const GORGON_ROOTS: &str = include_str!("../roots/gorgon.json");
 
 fn make_log_list() -> Vec<LogInfo> {
     vec![
@@ -178,6 +179,11 @@ fn make_log_list() -> Vec<LogInfo> {
             "https://yeti2022.ct.digicert.com/log/",
             LogShard::ExpiryYear(2022),
             NESSIE_YETI_ROOTS,
+        ),
+        LogInfo::new(
+            "https://gorgon.ct.digicert.com/log/",
+            LogShard::Any,
+            GORGON_ROOTS,
         ),
     ]
 }
