@@ -14,8 +14,7 @@ use certificate_carver::{
     run, CarveConfig,
 };
 
-const PILOT_DAEDALUS_ROOTS: &str = include_str!("../roots/pilot-daedalus.json");
-const ICARUS_ROOTS: &str = include_str!("../roots/icarus.json");
+const DAEDALUS_ROOTS: &str = include_str!("../roots/daedalus.json");
 const DODO_ROOTS: &str = include_str!("../roots/dodo.json");
 const MAMMOTH_SABRE_ROOTS: &str = include_str!("../roots/mammoth-sabre.json");
 const ARGON_XENON_ROOTS: &str = include_str!("../roots/argon-xenon.json");
@@ -25,19 +24,9 @@ const NESSIE_YETI_ROOTS: &str = include_str!("../roots/nessie-yeti.json");
 fn make_log_list() -> Vec<LogInfo> {
     vec![
         LogInfo::new(
-            "https://ct.googleapis.com/pilot/",
-            LogShard::Any,
-            PILOT_DAEDALUS_ROOTS,
-        ),
-        LogInfo::new(
             "https://ct.googleapis.com/daedalus/",
             LogShard::AlreadyExpired,
-            PILOT_DAEDALUS_ROOTS,
-        ),
-        LogInfo::new(
-            "https://ct.googleapis.com/icarus/",
-            LogShard::Any,
-            ICARUS_ROOTS,
+            DAEDALUS_ROOTS,
         ),
         LogInfo::new("https://dodo.ct.comodo.com/", LogShard::Any, DODO_ROOTS),
         LogInfo::new(
