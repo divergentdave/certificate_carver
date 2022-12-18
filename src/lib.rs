@@ -72,7 +72,7 @@ impl Display for CertificateFingerprint {
 
 impl Debug for CertificateFingerprint {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "CertificateFingerprint({})", self)
+        write!(f, "CertificateFingerprint({self})")
     }
 }
 
@@ -118,7 +118,7 @@ impl Display for ApiError {
             ApiError::Surf(err) => Display::fmt(err, f),
             ApiError::Status(code) => write!(f, "{} {}", *code as u16, code.canonical_reason()),
             ApiError::Json(err) => Display::fmt(err, f),
-            ApiError::InvalidResponse(details) => write!(f, "Invalid response, {}", details),
+            ApiError::InvalidResponse(details) => write!(f, "Invalid response, {details}"),
         }
     }
 }
@@ -737,7 +737,7 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
         }
         let path_limit = 10;
         for path in info.paths.iter().take(path_limit) {
-            println!("{}", path);
+            println!("{path}");
         }
         if info.paths.len() > path_limit {
             println!("...");
@@ -746,8 +746,7 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
     }
     let total = total_found + total_not_found;
     println!(
-        "{}/{} in crt.sh already, {}/{} not yet in crt.sh ({} did not chain to roots, {} were roots)",
-        total_found, total, total_not_found, total, count_no_chain, count_is_root
+        "{total_found}/{total} in crt.sh already, {total_not_found}/{total} not yet in crt.sh ({count_no_chain} did not chain to roots, {count_is_root} were roots)",
     );
     println!();
 
@@ -800,7 +799,7 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
                         println!();
                     }
                     Err(e) => {
-                        println!("submission error: {} {:?}", e, e);
+                        println!("submission error: {e} {e:?}");
                         last_submission_error = Some(e);
                     }
                 }
@@ -812,10 +811,7 @@ pub fn run<I: Iterator<Item = PathBuf> + Send, C: CrtShServer, L: LogServers>(
             panic_any(error_desc);
         }
     }
-    println!(
-        "Successfully submitted {}/{} new certificates",
-        new_submission_count, new_certs_len
-    );
+    println!("Successfully submitted {new_submission_count}/{new_certs_len} new certificates",);
 }
 
 #[cfg(test)]

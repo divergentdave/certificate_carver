@@ -27,7 +27,7 @@ impl CrtShServer for RealCrtShServer<'_> {
     // true: certificate has already been indexed
     // false: certificate has not been indexed
     fn check_crtsh(&self, fp: &CertificateFingerprint) -> Result<bool, ApiError> {
-        let url_str = format!("https://crt.sh/?q={}", fp);
+        let url_str = format!("https://crt.sh/?q={fp}");
         let url = Url::parse(&url_str).unwrap();
         let mut resp = block_on(self.client.get(url))?;
         if !resp.status().is_success() {
@@ -91,7 +91,7 @@ struct RetryDelayState {
 impl<T: CrtShServer> RetryDelayCrtShServer<T> {
     pub fn new(inner: T, delay: Duration) -> RetryDelayCrtShServer<T> {
         let state = RetryDelayState {
-            last_request: Instant::now() - delay,
+            last_request: Instant::now().checked_sub(delay).unwrap(),
         };
         RetryDelayCrtShServer {
             inner,

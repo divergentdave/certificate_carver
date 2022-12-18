@@ -981,12 +981,12 @@ impl Display for NameInfo {
                             };
                             if cur_name_type == name_type {
                                 if space {
-                                    write!(f, " {}=", type_description)?;
+                                    write!(f, " {type_description}=")?;
                                 } else {
-                                    write!(f, "{}=", type_description)?;
+                                    write!(f, "{type_description}=")?;
                                 }
                                 match cur_value {
-                                    Some(string) => write!(f, "{}", string)?,
+                                    Some(string) => write!(f, "{string}")?,
                                     None => write!(f, "(unparseable value)")?,
                                 }
                                 space = true;
