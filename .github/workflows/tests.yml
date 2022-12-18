@@ -13,6 +13,7 @@ jobs:
         name: Clippy
         runs-on: ubuntu-latest
         steps:
+            - run: sudo apt-get install -y libssl-dev
             - uses: actions/checkout@v2
             - uses: actions-rs/toolchain@v1
               with:
@@ -27,6 +28,7 @@ jobs:
         name: Test suite
         runs-on: ubuntu-latest
         steps:
+            - run: sudo apt-get install -y libssl-dev
             - uses: actions/checkout@v2
             - uses: actions/cache@v1
               env:
