@@ -10,7 +10,7 @@ Arguments:
 Options:
   -v...          Sets the verbosity level
   -j <jobs>      Sets the number of carving threads [default: 4]
-  -h, --help     Print help information
-  -V, --version  Print version information
+  -h, --help     Print help
+  -V, --version  Print version
 
 ```
