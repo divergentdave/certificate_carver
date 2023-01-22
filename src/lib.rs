@@ -6,6 +6,7 @@ pub mod ldapprep;
 pub mod mocks;
 pub mod x509;
 
+use base64::Engine;
 use jwalk::WalkDirGeneric;
 use lazy_static::lazy_static;
 use log::{debug, error, info, trace};
@@ -42,17 +43,13 @@ fn copy_without_whitespace(input: &[u8]) -> Vec<u8> {
     input_copy
 }
 
-fn pem_base64_config() -> base64::Config {
-    base64::Config::new(base64::CharacterSet::Standard, true)
-}
-
 fn pem_base64_encode(input: &[u8]) -> String {
-    base64::encode_config(input, pem_base64_config())
+    base64::engine::general_purpose::STANDARD.encode(input)
 }
 
 fn pem_base64_decode<T: ?Sized + AsRef<[u8]>>(input: &T) -> Result<Vec<u8>, base64::DecodeError> {
     let stripped = copy_without_whitespace(input.as_ref());
-    base64::decode_config(stripped, pem_base64_config())
+    base64::engine::general_purpose::STANDARD.decode(stripped)
 }
 
 #[derive(Hash, PartialOrd, Ord, PartialEq, Eq, Clone, Copy)]
