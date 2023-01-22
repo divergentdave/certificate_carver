@@ -1,3 +1,5 @@
+use base64::Engine;
+
 use certificate_carver::CertificateBytes;
 
 // This was removed from base64 in version 0.10.0
@@ -18,8 +20,9 @@ pub fn decode_pem(pem_data: &[u8]) -> CertificateBytes {
     assert!(pem_data.starts_with(prefix));
     assert!(pem_data.ends_with(suffix));
     let base64_data = pem_data[prefix.len()..pem_data.len() - suffix.len()].to_vec();
-    let config = base64::Config::new(base64::CharacterSet::Standard, true);
     CertificateBytes(
-        base64::decode_config(copy_without_whitespace(base64_data.as_ref()), config).unwrap(),
+        base64::engine::general_purpose::STANDARD
+            .decode(copy_without_whitespace(base64_data.as_ref()))
+            .unwrap(),
     )
 }
