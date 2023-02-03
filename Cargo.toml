@@ -27,7 +27,7 @@ surf = "2.3.2"
 unicode-normalization = "0.1"
 untrusted = "0.9.0"
 zip = { version = "0.6.3", default-features = false, features = ["deflate", "bzip2", "zstd"] }
-trycmd = "0.14.4"
+trycmd = "0.14.11"
 
 [dependencies.regex]
 version = "1.7.1"
